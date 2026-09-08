@@ -1,0 +1,230 @@
+// Achadinhos — schema de dados
+// MVP minimo: Product, ProductOffer, PriceObservation, DailyPriceAggregate, Deal, DealDecision
+// Modelos adicionais (Click, Campaign, AffiliateLink) ja incluidos para suportar tracking basico.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Marketplace {
+  SHOPEE
+  TIKTOK_SHOP
+  AMAZON
+  MERCADO_LIVRE
+}
+
+enum PollingTier {
+  HOT
+  WARM
+  COLD
+}
+
+enum DealStatus {
+  DETECTED
+  PUBLISHED
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum DecisionType {
+  APPROVE
+  REJECT
+}
+
+/// Produto conceitual/fisico, deduplicado entre ofertas de vendedores diferentes
+/// quando possivel (GTIN/EAN). Nao confundir com ProductOffer (oferta especifica).
+model Product {
+  id            String   @id @default(cuid())
+  title         String
+  normalizedKey String   @unique // titulo normalizado + hash, usado no fallback de dedupe
+  gtin          String?  @unique
+  brand         String?
+  category      String?
+  imageUrl      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  offers ProductOffer[]
+
+  @@index([gtin])
+  @@index([category])
+}
+
+/// Oferta especifica de um vendedor/marketplace para um Product.
+/// Cada (marketplace, externalId) e unico. O historico de preco pertence a oferta,
+/// pois vendedores diferentes podem ter precos/estoques diferentes do mesmo produto.
+model ProductOffer {
+  id                String      @id @default(cuid())
+  productId         String
+  product           Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  marketplace       Marketplace
+  externalId        String // itemId da Shopee, por exemplo
+  externalShopId    String?
+  sellerName        String?
+  url               String
+  imageUrl          String?
+  ratingStar        Float?
+  ratingCount       Int?
+  salesCount        Int?
+  commissionRateBp  Int? // basis points (ex: 1200 = 12%)
+  pollingTier       PollingTier @default(WARM)
+  active            Boolean     @default(true)
+  lastCollectedAt   DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  priceObservations   PriceObservation[]
+  dailyPriceAggregates DailyPriceAggregate[]
+  deals               Deal[]
+  affiliateLinks      AffiliateLink[]
+
+  @@unique([marketplace, externalId])
+  @@index([pollingTier, active])
+  @@index([productId])
+}
+
+/// Observacao pontual de preco/frete/comissao/estoque. So gravamos uma nova linha
+/// quando algo relevante mudou desde a ultima observacao (evita duplicacao).
+model PriceObservation {
+  id                  String       @id @default(cuid())
+  productOfferId      String
+  productOffer        ProductOffer @relation(fields: [productOfferId], references: [id], onDelete: Cascade)
+  source              Marketplace
+  observedAt          DateTime     @default(now())
+  priceCents          Int
+  shippingCents       Int?
+  commissionCents     Int?
+  inStock              Boolean      @default(true)
+  originalPriceCents  Int?
+  discountRate        Float?
+  rawData             Json?
+
+  @@index([productOfferId, observedAt])
+  @@index([observedAt])
+}
+
+/// Agregacao diaria derivada das observacoes, usada para calculos de historico
+/// (min/max/mediana/plateau) sem precisar varrer todas as observacoes brutas.
+model DailyPriceAggregate {
+  id               String       @id @default(cuid())
+  productOfferId   String
+  productOffer     ProductOffer @relation(fields: [productOfferId], references: [id], onDelete: Cascade)
+  source           Marketplace
+  day              DateTime // truncado para meia-noite UTC
+  minPriceCents    Int
+  maxPriceCents    Int
+  closePriceCents  Int
+  observationsCount Int         @default(0)
+
+  @@unique([productOfferId, day])
+  @@index([productOfferId, day])
+}
+
+/// Uma oportunidade detectada pelo Analysis Engine para uma ProductOffer,
+/// com o Deal Score calculado e o snapshot dos dados usados na decisao.
+model Deal {
+  id                 String     @id @default(cuid())
+  productOfferId     String
+  productOffer       ProductOffer @relation(fields: [productOfferId], references: [id], onDelete: Cascade)
+  status             DealStatus @default(DETECTED)
+  dealScore          Int
+  confidenceScore    Float
+  evScore             Float?
+  priceCents         Int
+  referencePriceCents Int
+  discountRate        Float
+  minPrice90dCents    Int?
+  commissionCents     Int?
+  freeShipping        Boolean    @default(false)
+  preHikeDetected      Boolean    @default(false)
+  scoreBreakdown       Json // { desconto, minimo, comissao, atrito, estabilidade, demanda }
+  reasonsDiscarded     Json? // motivos de descarte quando aplicavel
+  detectedAt           DateTime   @default(now())
+  publishedAt          DateTime?
+  expiresAt            DateTime?
+
+  decisions      DealDecision[]
+  affiliateLinks AffiliateLink[]
+  clicks         Click[]
+
+  @@index([status, dealScore])
+  @@index([productOfferId])
+  @@index([detectedAt])
+}
+
+/// Registro da decisao humana (via Telegram) sobre um Deal.
+model DealDecision {
+  id         String       @id @default(cuid())
+  dealId     String
+  deal       Deal         @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  decision   DecisionType
+  reason     String?
+  decidedBy  String? // telegram user id/username
+  decidedAt  DateTime     @default(now())
+
+  @@index([dealId])
+}
+
+/// Link de afiliado gerado (quando a API do marketplace suporta) para um Deal.
+model AffiliateLink {
+  id             String        @id @default(cuid())
+  dealId         String?
+  deal           Deal?         @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  productOfferId String
+  productOffer   ProductOffer  @relation(fields: [productOfferId], references: [id], onDelete: Cascade)
+  campaignId     String?
+  campaign       Campaign?     @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  shortLink      String?
+  originalLink   String
+  subId          String?
+  createdAt      DateTime      @default(now())
+
+  clicks Click[]
+
+  @@index([dealId])
+  @@index([productOfferId])
+}
+
+/// Campanha/agrupamento de subId para permitir analisar performance por canal.
+model Campaign {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  affiliateLinks AffiliateLink[]
+}
+
+/// Clique registrado pelo redirecionador /r/{slug}.
+model Click {
+  id              String         @id @default(cuid())
+  dealId          String?
+  deal            Deal?          @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  affiliateLinkId String?
+  affiliateLink   AffiliateLink? @relation(fields: [affiliateLinkId], references: [id], onDelete: SetNull)
+  slug            String
+  ipHash          String?
+  userAgent       String?
+  clickedAt       DateTime       @default(now())
+
+  @@index([slug])
+  @@index([dealId])
+}
+
+/// Keywords usadas para descoberta de produtos por marketplace.
+model SearchKeyword {
+  id          String      @id @default(cuid())
+  marketplace Marketplace
+  keyword     String
+  enabled     Boolean     @default(true)
+  priority    Int         @default(0)
+  createdAt   DateTime    @default(now())
+
+  @@unique([marketplace, keyword])
+  @@index([marketplace, enabled, priority])
+}

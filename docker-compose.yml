@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: achadinhos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: achadinhos
+      POSTGRES_PASSWORD: achadinhos
+      POSTGRES_DB: achadinhos
+    ports:
+      - "5432:5432"
+    volumes:
+      - achadinhos_pg_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: achadinhos-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - achadinhos_redis_data:/data
+
+volumes:
+  achadinhos_pg_data:
+  achadinhos_redis_data:
