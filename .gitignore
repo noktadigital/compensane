@@ -31,3 +31,4 @@ prisma/dev.db
 
 # misc
 *.tsbuildinfo
+.claude/

@@ -132,6 +132,22 @@ src/
 
 Os intervalos de cada tier de polling (`POLLING_HOT_INTERVAL_MIN` etc.) são configuráveis via `.env` — nunca hardcoded.
 
+## Scripts de desenvolvimento/debug
+
+`scripts/dev/` contém utilitários fora do pipeline de produção, úteis para testar o sistema manualmente:
+
+- `backfill-demo-history.ts` — popula 90 dias de histórico simulado (plateau em torno de R$199) para a oferta mock `mock-whey-dark-lab-1`, permitindo testar o Deal Score com confiança alta sem esperar dias reais de coleta.
+- `trigger-analyze.ts` — dispara a análise de deal manualmente para essa oferta e envia o card ao Telegram, sem esperar o próximo ciclo do scheduler.
+- `inspect-offer.ts` — mostra o estado atual (últimas observações, contagem de agregações) de uma oferta no banco.
+
+Rode com `npx ts-node -r tsconfig-paths/register scripts/dev/<script>.ts`. **Importante**: pare a aplicação principal (`npm run start:dev`/`start:prod`) antes de rodar esses scripts — o Supabase Session Pooler (plano free) tem um limite baixo de conexões simultâneas (15), e rodar múltiplos processos Prisma ao mesmo tempo pode esgotar o pool (erro `EMAXCONNSESSION`).
+
+## Notas de infraestrutura (Supabase + Upstash)
+
+- **Supabase — use o Session Pooler, não a Direct Connection.** A conexão direta (`db.xxx.supabase.co:5432`) resolve apenas em IPv6, o que falha em várias redes no Brasil. Use `Project Settings → Database → Connection String → Session pooler` (host `aws-0-<região>.pooler.supabase.com`, porta 5432).
+- **Sempre defina `connection_limit` na `DATABASE_URL`** (ex: `?connection_limit=5&pool_timeout=10`) — o Session Pooler do plano free tem um teto de 15 conexões simultâneas, e o Prisma abre várias conexões por instância se não for limitado.
+- **RLS (Row Level Security) desabilitado é esperado** e aparece como "erro" no Security Advisor do Supabase — mas só importa quando o banco é acessado via API pública (`supabase-js`/PostgREST) por clientes não confiáveis. Aqui o Postgres só é acessado pelo backend NestJS via Prisma com credenciais de admin, então RLS é opcional (cosmético).
+
 ## Deal Score
 
 Módulo isolado (`DealScoringService`), soma de 6 componentes (0–100):

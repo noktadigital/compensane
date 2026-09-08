@@ -16,7 +16,6 @@ import { TrackingMetricsFormatter } from './tracking-metrics.formatter';
       inject: [AppConfigService],
       useFactory: (appConfig: AppConfigService) => ({
         token: appConfig.telegram.botToken || 'MISSING_TOKEN',
-        launchOptions: false,
       }),
     }),
     DealsModule,
