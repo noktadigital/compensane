@@ -55,6 +55,11 @@ export class MercadoLivreOAuthService {
     url.searchParams.set('redirect_uri', redirectUri);
     url.searchParams.set('code_challenge', pkce.codeChallenge);
     url.searchParams.set('code_challenge_method', 'S256');
+    // offline_access e necessario para receber refresh_token; read e
+    // necessario para consultar catalogo/itens. Sem declarar explicitamente,
+    // o ML pode aplicar um scope restrito (ex: so dados da propria conta de
+    // afiliado), causando 403 mesmo com token valido.
+    url.searchParams.set('scope', 'offline_access read');
 
     return url.toString();
   }
