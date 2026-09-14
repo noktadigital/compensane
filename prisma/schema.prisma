@@ -228,3 +228,20 @@ model SearchKeyword {
   @@unique([marketplace, keyword])
   @@index([marketplace, enabled, priority])
 }
+
+/// Token OAuth2 persistido por marketplace (ex: Mercado Livre). O access_token
+/// expira em horas e o refresh_token e de uso unico — a cada renovacao,
+/// o token novo substitui o anterior nesta mesma linha. Um marketplace so
+/// tem uma linha (upsert por marketplace), pois o app so opera com uma
+/// conta de afiliado por vez na V1.
+model MarketplaceOAuthToken {
+  id           String      @id @default(cuid())
+  marketplace  Marketplace @unique
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  scope        String?
+  userId       String? // id do usuario/conta autorizada no marketplace, quando aplicavel
+  updatedAt    DateTime    @updatedAt
+  createdAt    DateTime    @default(now())
+}

@@ -3,6 +3,7 @@ import { ConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { MarketplaceCoreModule } from './marketplaces/core/marketplace-core.module';
 import { ShopeeModule } from './marketplaces/shopee/shopee.module';
+import { MercadoLivreModule } from './marketplaces/mercado-livre/mercado-livre.module';
 import { ProductsModule } from './products/products.module';
 import { PriceHistoryModule } from './price-history/price-history.module';
 import { DealsModule } from './deals/deals.module';
@@ -19,6 +20,7 @@ import { HealthModule } from './health/health.module';
     DatabaseModule,
     MarketplaceCoreModule,
     ShopeeModule,
+    MercadoLivreModule,
     ProductsModule,
     PriceHistoryModule,
     DealsModule,

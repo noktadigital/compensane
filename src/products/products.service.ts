@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PollingTier, ProductOffer } from '@prisma/client';
+import { Marketplace, PollingTier, ProductOffer } from '@prisma/client';
 import { PrismaService } from '@/database/prisma.service';
 import { DeduplicationService } from '@/dedup/deduplication.service';
 import { RawMarketplaceOffer } from '@/marketplaces/core/marketplace-adapter.interface';
@@ -78,9 +78,13 @@ export class ProductsService {
     return offer;
   }
 
-  async findActiveOffersByTier(tier: PollingTier, take?: number): Promise<ProductOffer[]> {
+  async findActiveOffersByTier(
+    marketplace: Marketplace,
+    tier: PollingTier,
+    take?: number,
+  ): Promise<ProductOffer[]> {
     return this.prisma.productOffer.findMany({
-      where: { pollingTier: tier, active: true },
+      where: { marketplace, pollingTier: tier, active: true },
       orderBy: { lastCollectedAt: 'asc' },
       take,
     });

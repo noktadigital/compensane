@@ -57,6 +57,25 @@ export class AppConfigService {
     };
   }
 
+  get mercadoLivre() {
+    return {
+      clientId: this.config.get<string>('MERCADO_LIVRE_CLIENT_ID', ''),
+      clientSecret: this.config.get<string>('MERCADO_LIVRE_CLIENT_SECRET', ''),
+      redirectUri: this.config.get<string>('MERCADO_LIVRE_REDIRECT_URI', ''),
+      apiBaseUrl: this.config.get<string>('MERCADO_LIVRE_API_BASE_URL', 'https://api.mercadolibre.com'),
+      authBaseUrl: this.config.get<string>(
+        'MERCADO_LIVRE_AUTH_BASE_URL',
+        'https://auth.mercadolivre.com.br',
+      ),
+      mode: this.config.get<'mock' | 'live'>('MERCADO_LIVRE_MODE', 'mock'),
+      // Parametros do link de afiliado (secao "Compartilhar" do Portal de
+      // Afiliados). Nao existe API oficial para gerar isso — matt_word e
+      // matt_tool sao fixos por conta de afiliado, obtidos manualmente.
+      mattWord: this.config.get<string>('MERCADO_LIVRE_MATT_WORD', ''),
+      mattTool: this.config.get<string>('MERCADO_LIVRE_MATT_TOOL', ''),
+    };
+  }
+
   /** Regras de negocio para deteccao/publicacao de ofertas (secoes 9, 11, 23). */
   get dealRules() {
     return {

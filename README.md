@@ -1,6 +1,6 @@
 # Achadinhos
 
-Sistema interno de inteligência de ofertas para afiliados — um "copiloto de ofertas". Monitora marketplaces (V1: Shopee), detecta quedas de preço reais (não anúncios enganosos), calcula um **Deal Score**, e envia as melhores oportunidades para aprovação via **Telegram**. Após aprovação, gera o post pronto e o link para compartilhamento manual no **WhatsApp**.
+Sistema interno de inteligência de ofertas para afiliados — um "copiloto de ofertas". Monitora marketplaces (Shopee e Mercado Livre), detecta quedas de preço reais (não anúncios enganosos), calcula um **Deal Score**, e envia as melhores oportunidades para aprovação via **Telegram**. Após aprovação, gera o post pronto e o link para compartilhamento manual no **WhatsApp**.
 
 ## Filosofia
 
@@ -9,7 +9,7 @@ O sistema não tenta encontrar todas as ofertas — ele busca **as melhores**. �
 ## Arquitetura
 
 ```
-Marketplace APIs (Shopee)
+Marketplace APIs (Shopee, Mercado Livre)
         ↓
    Collectors (jobs BullMQ)
         ↓
@@ -28,7 +28,7 @@ Marketplace APIs (Shopee)
    WhatsApp share (deep link, envio manual)
 ```
 
-O core nunca conhece detalhes de um marketplace específico — tudo passa pela interface `MarketplaceAdapter` (`src/marketplaces/core`). A Shopee é a primeira implementação; TikTok Shop, Amazon e Mercado Livre serão adicionados no mesmo padrão futuramente.
+O core nunca conhece detalhes de um marketplace específico — tudo passa pela interface `MarketplaceAdapter` (`src/marketplaces/core`). Shopee e Mercado Livre já estão implementados nesse padrão; TikTok Shop e Amazon serão adicionados futuramente.
 
 ## Stack
 
@@ -147,6 +147,24 @@ Rode com `npx ts-node -r tsconfig-paths/register scripts/dev/<script>.ts`. **Imp
 - **Supabase — use o Session Pooler, não a Direct Connection.** A conexão direta (`db.xxx.supabase.co:5432`) resolve apenas em IPv6, o que falha em várias redes no Brasil. Use `Project Settings → Database → Connection String → Session pooler` (host `aws-0-<região>.pooler.supabase.com`, porta 5432).
 - **Sempre defina `connection_limit` na `DATABASE_URL`** (ex: `?connection_limit=5&pool_timeout=10`) — o Session Pooler do plano free tem um teto de 15 conexões simultâneas, e o Prisma abre várias conexões por instância se não for limitado.
 - **RLS (Row Level Security) desabilitado é esperado** e aparece como "erro" no Security Advisor do Supabase — mas só importa quando o banco é acessado via API pública (`supabase-js`/PostgREST) por clientes não confiáveis. Aqui o Postgres só é acessado pelo backend NestJS via Prisma com credenciais de admin, então RLS é opcional (cosmético).
+- **Projetos Supabase free pausam automaticamente após ~7 dias de inatividade.** O sintoma é confuso: comandos Prisma locais falham com `FATAL: (ENOTFOUND) tenant/user <ref> not found` e a app em produção retorna 502 — parece problema de credenciais, mas é só o projeto dormindo. Não há como acordar via tentativa de conexão; entre em supabase.com/dashboard e clique em "Restore"/"Resume".
+
+## Mercado Livre — autenticação OAuth2 + PKCE
+
+Diferente da Shopee (App ID/Secret direto), a API do Mercado Livre exige OAuth2 com PKCE. Passos para autorizar:
+
+1. Crie um app em [developers.mercadolivre.com.br](https://developers.mercadolivre.com.br) → "Gestão de aplicações". Anote o **Client ID** e a **Chave secreta** (Client Secret).
+2. Configure o **Redirect URI** do app para `<APP_URL>/marketplaces/mercado-livre/callback` (precisa bater exatamente).
+3. Preencha `MERCADO_LIVRE_CLIENT_ID`, `MERCADO_LIVRE_CLIENT_SECRET` e `MERCADO_LIVRE_REDIRECT_URI` no `.env`, e defina `MERCADO_LIVRE_MODE=live`.
+4. Com a aplicação rodando, acesse `GET <APP_URL>/marketplaces/mercado-livre/auth` no navegador uma única vez — isso redireciona para o login do ML, e após autorizar, o ML chama o callback automaticamente, trocando o código por `access_token`/`refresh_token` (persistidos em `MarketplaceOAuthToken`).
+5. Confira em `GET <APP_URL>/marketplaces/mercado-livre/status` se `authorized: true`.
+
+**O `access_token` expira em 6 horas e o `refresh_token` do ML é de uso único** — a cada renovação automática, o token novo substitui o anterior no banco (`MercadoLivreOAuthService.getValidAccessToken` cuida disso sozinho, com margem de segurança de 5 minutos antes do vencimento).
+
+### Limitações conhecidas da API do Mercado Livre
+
+- **Não existe API oficial para gerar link de afiliado.** O link é a URL do produto com os parâmetros `matt_word` e `matt_tool` (fixos por conta de afiliado) anexados — obtidos manualmente clicando em "Compartilhar" no [Portal de Afiliados](https://mercadolivre.com.br) → Afiliados e criadores → Central. Configure `MERCADO_LIVRE_MATT_WORD`/`MERCADO_LIVRE_MATT_TOOL` no `.env`.
+- **O endpoint de busca pública (`/sites/{site}/search`) tem retornado 403 Forbidden** mesmo para aplicações com OAuth válido, segundo relatos de múltiplos desenvolvedores (sem comunicação oficial clara do motivo — pode exigir programa de parceiros). Se a descoberta por keyword falhar consistentemente, isso é esperado; `getOffersByIds` (via `/items?ids=...`) usa outro endpoint e tende a funcionar normalmente.
 
 ## Deal Score
 

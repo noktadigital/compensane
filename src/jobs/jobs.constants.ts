@@ -5,6 +5,7 @@
  * Conceitualmente estas filas correspondem a collect:shopee, record:prices etc.
  */
 export const QUEUE_COLLECT_SHOPEE = 'collect-shopee';
+export const QUEUE_COLLECT_MERCADO_LIVRE = 'collect-mercado-livre';
 export const QUEUE_RECORD_PRICES = 'record-prices';
 export const QUEUE_AGGREGATE_DAILY = 'aggregate-daily';
 export const QUEUE_ANALYZE_DEALS = 'analyze-deals';

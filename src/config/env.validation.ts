@@ -61,6 +61,38 @@ export class EnvironmentVariables {
   @IsOptional()
   SHOPEE_MODE: string = 'mock';
 
+  @IsString()
+  @IsOptional()
+  MERCADO_LIVRE_CLIENT_ID?: string;
+
+  @IsString()
+  @IsOptional()
+  MERCADO_LIVRE_CLIENT_SECRET?: string;
+
+  @IsString()
+  @IsOptional()
+  MERCADO_LIVRE_REDIRECT_URI?: string;
+
+  @IsString()
+  @IsOptional()
+  MERCADO_LIVRE_API_BASE_URL?: string = 'https://api.mercadolibre.com';
+
+  @IsString()
+  @IsOptional()
+  MERCADO_LIVRE_AUTH_BASE_URL?: string = 'https://auth.mercadolivre.com.br';
+
+  @IsIn(['mock', 'live'])
+  @IsOptional()
+  MERCADO_LIVRE_MODE: string = 'mock';
+
+  @IsString()
+  @IsOptional()
+  MERCADO_LIVRE_MATT_WORD?: string;
+
+  @IsString()
+  @IsOptional()
+  MERCADO_LIVRE_MATT_TOOL?: string;
+
   @IsNumber()
   @Min(0)
   @Max(1)

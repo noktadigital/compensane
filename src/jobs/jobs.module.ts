@@ -6,9 +6,11 @@ import { ProductsModule } from '@/products/products.module';
 import { PriceHistoryModule } from '@/price-history/price-history.module';
 import { DealsModule } from '@/deals/deals.module';
 import { ShopeeModule } from '@/marketplaces/shopee/shopee.module';
+import { MercadoLivreModule } from '@/marketplaces/mercado-livre/mercado-livre.module';
 import { TelegramModule } from '@/telegram/telegram.module';
 import {
   QUEUE_COLLECT_SHOPEE,
+  QUEUE_COLLECT_MERCADO_LIVRE,
   QUEUE_RECORD_PRICES,
   QUEUE_AGGREGATE_DAILY,
   QUEUE_ANALYZE_DEALS,
@@ -16,8 +18,11 @@ import {
   QUEUE_CLEANUP_DATA,
 } from './jobs.constants';
 import { QUEUE_DISCOVER_SHOPEE } from './processors/discover-shopee.processor';
+import { QUEUE_DISCOVER_MERCADO_LIVRE } from './processors/discover-mercado-livre.processor';
 import { CollectShopeeProcessor } from './processors/collect-shopee.processor';
 import { DiscoverShopeeProcessor } from './processors/discover-shopee.processor';
+import { CollectMercadoLivreProcessor } from './processors/collect-mercado-livre.processor';
+import { DiscoverMercadoLivreProcessor } from './processors/discover-mercado-livre.processor';
 import { RecordPricesProcessor } from './processors/record-prices.processor';
 import { AnalyzeDealsProcessor } from './processors/analyze-deals.processor';
 import { NotifyTelegramProcessor } from './processors/notify-telegram.processor';
@@ -44,6 +49,8 @@ import { JobsSchedulerService } from './jobs-scheduler.service';
     BullModule.registerQueue(
       { name: QUEUE_COLLECT_SHOPEE },
       { name: QUEUE_DISCOVER_SHOPEE },
+      { name: QUEUE_COLLECT_MERCADO_LIVRE },
+      { name: QUEUE_DISCOVER_MERCADO_LIVRE },
       { name: QUEUE_RECORD_PRICES },
       { name: QUEUE_AGGREGATE_DAILY },
       { name: QUEUE_ANALYZE_DEALS },
@@ -54,11 +61,14 @@ import { JobsSchedulerService } from './jobs-scheduler.service';
     PriceHistoryModule,
     DealsModule,
     ShopeeModule,
+    MercadoLivreModule,
     TelegramModule,
   ],
   providers: [
     CollectShopeeProcessor,
     DiscoverShopeeProcessor,
+    CollectMercadoLivreProcessor,
+    DiscoverMercadoLivreProcessor,
     RecordPricesProcessor,
     AnalyzeDealsProcessor,
     NotifyTelegramProcessor,

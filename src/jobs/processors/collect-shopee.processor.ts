@@ -1,7 +1,7 @@
 import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
-import { PollingTier } from '@prisma/client';
+import { Marketplace, PollingTier } from '@prisma/client';
 import { PrismaService } from '@/database/prisma.service';
 import { ProductsService } from '@/products/products.service';
 import { SHOPEE_ADAPTER } from '@/marketplaces/shopee/shopee.module';
@@ -43,7 +43,7 @@ export class CollectShopeeProcessor extends WorkerHost {
     const { tier } = job.data;
     this.logger.log(`Iniciando coleta Shopee para tier ${tier}`);
 
-    const offers = await this.productsService.findActiveOffersByTier(tier);
+    const offers = await this.productsService.findActiveOffersByTier(Marketplace.SHOPEE, tier);
 
     if (offers.length === 0) {
       this.logger.debug(`Nenhuma oferta ativa no tier ${tier} ainda.`);
