@@ -13,21 +13,27 @@ const SEED_KEYWORDS: { keyword: string; priority: number }[] = [
   { keyword: 'celular', priority: 4 },
 ];
 
+const SEED_MARKETPLACES: Marketplace[] = [Marketplace.SHOPEE, Marketplace.MERCADO_LIVRE];
+
 async function main() {
-  for (const kw of SEED_KEYWORDS) {
-    await prisma.searchKeyword.upsert({
-      where: { marketplace_keyword: { marketplace: Marketplace.SHOPEE, keyword: kw.keyword } },
-      create: {
-        marketplace: Marketplace.SHOPEE,
-        keyword: kw.keyword,
-        priority: kw.priority,
-        enabled: true,
-      },
-      update: { priority: kw.priority },
-    });
+  for (const marketplace of SEED_MARKETPLACES) {
+    for (const kw of SEED_KEYWORDS) {
+      await prisma.searchKeyword.upsert({
+        where: { marketplace_keyword: { marketplace, keyword: kw.keyword } },
+        create: {
+          marketplace,
+          keyword: kw.keyword,
+          priority: kw.priority,
+          enabled: true,
+        },
+        update: { priority: kw.priority },
+      });
+    }
   }
 
-  console.log(`Seed concluido: ${SEED_KEYWORDS.length} keywords para SHOPEE`);
+  console.log(
+    `Seed concluido: ${SEED_KEYWORDS.length} keywords x ${SEED_MARKETPLACES.length} marketplaces`,
+  );
 }
 
 main()
