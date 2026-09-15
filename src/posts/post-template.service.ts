@@ -3,10 +3,14 @@ import { Injectable } from '@nestjs/common';
 export interface PostTemplateData {
   title: string;
   priceCents: number;
+  /** Preco de referencia apurado pelo nosso historico — vira o valor riscado. */
+  referencePriceCents?: number | null;
   discountRate?: number | null;
   freeShipping?: boolean;
   link: string;
   ratingStar?: number | null;
+  /** 1-2 beneficios do produto, escritos por quem aprova. */
+  benefits?: string[];
 }
 
 export interface DealCardData extends PostTemplateData {
@@ -101,19 +105,31 @@ export class PostTemplateService {
     return `⚠️ Loja anuncia ${Math.round(advertised * 100)}% OFF, mas o real é ${Math.round(real * 100)}%`;
   }
 
-  /** Texto pronto para compartilhamento no WhatsApp, apos aprovacao. */
+  /**
+   * Texto pronto para colar no WhatsApp, apos aprovacao.
+   *
+   * O preco anterior exibido e o preco de REFERENCIA apurado pelo nosso
+   * historico — nunca o "de/por" anunciado pela loja. E essa a diferenca
+   * entre divulgar um desconto real e repassar um falso desconto.
+   */
   buildWhatsappPost(data: PostTemplateData): string {
-    const lines = ['🔥 OFERTA RELÂMPAGO', '', data.title, '', `💰 ${formatBRL(data.priceCents)}`, ''];
+    const lines = ['🔥 OFERTA QUE COMPENSA!', '', `🛍️ ${data.title}`, '', `💰 ${formatBRL(data.priceCents)}`];
 
-    if (data.discountRate && data.discountRate > 0) {
-      lines.push('📉 Está abaixo do preço normal');
+    // ~texto~ e o riscado do WhatsApp.
+    if (data.referencePriceCents && data.referencePriceCents > data.priceCents) {
+      const offPercent = Math.round(
+        ((data.referencePriceCents - data.priceCents) / data.referencePriceCents) * 100,
+      );
+      lines.push(`~${formatBRL(data.referencePriceCents)}~ | ${offPercent}% OFF`);
     }
 
-    if (data.freeShipping) {
-      lines.push('🚚 Frete grátis');
+    if (data.benefits?.length) {
+      lines.push('', ...data.benefits.map((benefit) => `✅ ${benefit}`));
+    } else if (data.freeShipping) {
+      lines.push('', '🚚 Frete grátis');
     }
 
-    lines.push('', '👇 Aproveite:', data.link, '', '⚠️ Preço e estoque podem mudar.');
+    lines.push('', '👉 COMPRAR AGORA:', data.link, '', '⏳ Preço e disponibilidade podem mudar a qualquer momento.');
 
     return lines.join('\n');
   }

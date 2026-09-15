@@ -47,19 +47,52 @@ describe('PostTemplateService', () => {
     expect(card).not.toContain('Mínimo 90d');
   });
 
-  it('monta o texto de WhatsApp com link e aviso de preco/estoque', () => {
+  it('monta o texto de WhatsApp com preco riscado e percentual de desconto', () => {
     const text = service.buildWhatsappPost({
       title: 'Whey Dark Lab Isolate Protein Fuse 1,8kg',
       priceCents: 17090,
+      referencePriceCents: 22490,
       discountRate: 0.24,
       freeShipping: true,
       link: 'https://achadinhos.app/r/abc123',
     });
 
-    expect(text).toContain('🔥 OFERTA RELÂMPAGO');
+    expect(text).toContain('🔥 OFERTA QUE COMPENSA!');
+    expect(text).toContain('🛍️ Whey Dark Lab Isolate Protein Fuse 1,8kg');
     expect(text).toContain(brl(17090));
+    // Riscado do WhatsApp (~texto~) com o preco de referencia do historico.
+    expect(text).toContain(`~${brl(22490)}~`);
+    expect(text).toContain('24% OFF');
+    expect(text).toContain('👉 COMPRAR AGORA:');
     expect(text).toContain('https://achadinhos.app/r/abc123');
-    expect(text).toContain('⚠️ Preço e estoque podem mudar.');
+    expect(text).toContain('⏳ Preço e disponibilidade podem mudar a qualquer momento.');
+  });
+
+  it('usa os beneficios informados no lugar da linha de frete', () => {
+    const text = service.buildWhatsappPost({
+      title: 'Fone Bluetooth TWS',
+      priceCents: 7000,
+      referencePriceCents: 10000,
+      freeShipping: true,
+      benefits: ['Bateria de 30h', 'Cancelamento de ruído'],
+      link: 'https://achadinhos.app/r/xyz',
+    });
+
+    expect(text).toContain('✅ Bateria de 30h');
+    expect(text).toContain('✅ Cancelamento de ruído');
+    expect(text).not.toContain('🚚 Frete grátis');
+  });
+
+  it('omite o preco riscado quando nao ha referencia confiavel do historico', () => {
+    const text = service.buildWhatsappPost({
+      title: 'Produto sem historico',
+      priceCents: 5000,
+      link: 'https://achadinhos.app/r/sem-ref',
+    });
+
+    expect(text).not.toContain('~');
+    expect(text).not.toContain('OFF');
+    expect(text).toContain(brl(5000));
   });
 
   it('gera URL encoded para compartilhamento no WhatsApp (deep link e web)', () => {

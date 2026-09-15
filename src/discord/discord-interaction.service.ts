@@ -108,6 +108,9 @@ export class DiscordInteractionService implements OnApplicationBootstrap {
     const whatsappText = this.postTemplate.buildWhatsappPost({
       title: deal.productOffer.product.title,
       priceCents: deal.priceCents,
+      // Preco de referencia do NOSSO historico — e ele que vira o valor
+      // riscado no post. Sem isso o "XX% OFF" nunca aparece.
+      referencePriceCents: deal.referencePriceCents,
       discountRate: deal.discountRate,
       freeShipping: deal.freeShipping,
       link: finalLink,

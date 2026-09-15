@@ -158,14 +158,14 @@ model Deal {
   @@index([detectedAt])
 }
 
-/// Registro da decisao humana (via Telegram) sobre um Deal.
+/// Registro da decisao humana (via Discord) sobre um Deal.
 model DealDecision {
   id         String       @id @default(cuid())
   dealId     String
   deal       Deal         @relation(fields: [dealId], references: [id], onDelete: Cascade)
   decision   DecisionType
   reason     String?
-  decidedBy  String? // telegram user id/username
+  decidedBy  String? // discord user id/username
   decidedAt  DateTime     @default(now())
 
   @@index([dealId])

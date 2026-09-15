@@ -1,6 +1,6 @@
 # Achadinhos
 
-Sistema interno de inteligência de ofertas para afiliados — um "copiloto de ofertas". Monitora marketplaces (Shopee e Mercado Livre), detecta quedas de preço reais (não anúncios enganosos), calcula um **Deal Score**, e envia as melhores oportunidades para aprovação via **Telegram**. Após aprovação, gera o post pronto e o link para compartilhamento manual no **WhatsApp**.
+Sistema interno de inteligência de ofertas para afiliados — um "copiloto de ofertas". Monitora marketplaces (Shopee e Mercado Livre), detecta quedas de preço reais (não anúncios enganosos), calcula um **Deal Score**, e envia as melhores oportunidades para aprovação via **Discord**. Após aprovação, gera o post pronto e o link para compartilhamento manual no **WhatsApp**.
 
 ## Filosofia
 
@@ -21,7 +21,7 @@ Marketplace APIs (Shopee, Mercado Livre)
         ↓
    Analysis Engine (Deal Score, Pre-Hike Detector, EV)
         ↓
-      Telegram Bot (aprovação humana)
+      Discord Bot (aprovação humana)
         ↓
     Affiliate Link + Post Template
         ↓
@@ -36,7 +36,7 @@ O core nunca conhece detalhes de um marketplace específico — tudo passa pela 
 - **ORM**: Prisma
 - **Banco**: PostgreSQL
 - **Fila/Jobs**: BullMQ + Redis
-- **Bot**: Telegram (`telegraf` via `nestjs-telegraf`)
+- **Bot**: Discord (`discord.js`)
 - **Logs**: Winston (estruturado, `nest-winston`)
 - **Testes**: Jest
 
@@ -44,7 +44,7 @@ O core nunca conhece detalhes de um marketplace específico — tudo passa pela 
 
 - Node.js 18+
 - Docker (para Postgres/Redis locais) ou instâncias próprias
-- Uma conta de bot no Telegram ([@BotFather](https://t.me/BotFather))
+- Um bot no Discord ([Developer Portal](https://discord.com/developers/applications)) e um servidor onde convidá-lo
 
 ## Setup local
 
@@ -57,7 +57,7 @@ docker compose up -d
 
 # 3. Configurar variáveis de ambiente
 cp .env.example .env
-# edite .env: TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_CHAT_ID (obrigatórios para receber ofertas)
+# edite .env: DISCORD_BOT_TOKEN, DISCORD_CHANNEL_ID (obrigatórios para receber ofertas)
 
 # 4. Rodar migrations
 npm run prisma:migrate
@@ -69,7 +69,7 @@ npm run seed
 npm run start:dev
 ```
 
-Sem `SHOPEE_APP_ID`/`SHOPEE_APP_SECRET` configurados (ou com `SHOPEE_MODE=mock`), o sistema roda inteiramente com o **ShopeeMockAdapter** — um catálogo simulado com cenários de desconto real, falso desconto (pre-hike), pouco histórico, etc. Isso permite testar o pipeline completo (coleta → histórico → Deal Score → Telegram → aprovação → link → WhatsApp) sem credenciais reais.
+Sem `SHOPEE_APP_ID`/`SHOPEE_APP_SECRET` configurados (ou com `SHOPEE_MODE=mock`), o sistema roda inteiramente com o **ShopeeMockAdapter** — um catálogo simulado com cenários de desconto real, falso desconto (pre-hike), pouco histórico, etc. Isso permite testar o pipeline completo (coleta → histórico → Deal Score → Discord → aprovação → link → WhatsApp) sem credenciais reais.
 
 ## Variáveis de ambiente
 
@@ -79,20 +79,23 @@ Veja `.env.example` para a lista completa. As mais importantes:
 |---|---|
 | `DATABASE_URL` | Connection string do PostgreSQL |
 | `REDIS_URL` | Connection string do Redis (BullMQ) |
-| `TELEGRAM_BOT_TOKEN` | Token do bot (via @BotFather) |
-| `TELEGRAM_ADMIN_CHAT_ID` | Chat ID que recebe os cards de oferta |
+| `DISCORD_BOT_TOKEN` | Token do bot (Developer Portal → aba Bot → Reset Token) |
+| `DISCORD_CHANNEL_ID` | ID do canal que recebe os cards de oferta |
 | `SHOPEE_MODE` | `mock` (padrão, sem credenciais) ou `live` |
 | `SHOPEE_APP_ID` / `SHOPEE_APP_SECRET` | Credenciais da Shopee Affiliate Open API |
 | `MIN_REAL_DISCOUNT` | Desconto real mínimo para considerar a oferta (padrão 0.10) |
-| `PUBLISH_SCORE` | Deal Score mínimo para publicar no Telegram (padrão 70) |
+| `PUBLISH_SCORE` | Deal Score mínimo para enviar ao Discord (padrão 70) |
 | `HIGH_SCORE` | Score considerado prioridade alta (padrão 85) |
 | `AUTO_APPROVE_SCORE` | Reservado para auto-aprovação futura (NUNCA usado na V1) |
 
-### Como obter o `TELEGRAM_ADMIN_CHAT_ID`
+### Como configurar o bot do Discord
 
-1. Crie o bot com [@BotFather](https://t.me/BotFather) e copie o token para `TELEGRAM_BOT_TOKEN`.
-2. Envie uma mensagem qualquer para o bot.
-3. Acesse `https://api.telegram.org/bot<TOKEN>/getUpdates` e copie o `chat.id` retornado.
+1. Em [discord.com/developers/applications](https://discord.com/developers/applications): **New Application** → aba **Bot** → **Reset Token** → copie para `DISCORD_BOT_TOKEN`.
+2. Ainda na aba Bot, deixe todos os **Privileged Gateway Intents** desligados — nenhum é necessário. O bot só envia embeds e escuta cliques em botão (Interaction), o que não exige intent privilegiada.
+3. Aba **OAuth2 → URL Generator**: marque o scope `bot` e as permissões **Send Messages**, **Embed Links** e **Read Message History**. Abra a URL gerada e escolha o servidor.
+4. No Discord: **Configurações do Usuário → Avançado → Modo Desenvolvedor**. Depois, botão direito no canal → **Copiar ID do canal** → `DISCORD_CHANNEL_ID`.
+
+**Atenção**: o botão direito no *nome do servidor* copia o ID da guild, não do canal. Usar o ID errado faz o envio falhar com `DiscordAPIError[10003]: Unknown Channel`. Rode `scripts/dev/diagnose-discord.ts` para listar os canais visíveis ao bot com seus IDs e permissões.
 
 ## Estrutura de módulos
 
@@ -108,9 +111,9 @@ src/
 ├── products/            # Normalizer: upsert de Product + ProductOffer
 ├── price-history/       # Recording, agregação diária, estatísticas, plateau, confiança
 ├── deals/               # DealScoringService, PreHikeDetector, EvScoringService, DealsService
-├── posts/               # PostTemplateService (Telegram card + texto WhatsApp)
+├── posts/               # PostTemplateService (card de aprovação + texto WhatsApp)
 ├── tracking/            # DealDecision, Click, métricas básicas
-├── telegram/            # Bot: cards, botões aprovar/rejeitar, comando /status
+├── discord/             # Bot: embeds, botões aprovar/rejeitar
 ├── jobs/                # Filas e processors BullMQ (collect, record, aggregate, analyze, notify, cleanup)
 ├── redirect/             # Redirecionador /r/{slug} com tracking de clique
 └── health/               # /health e /metrics
@@ -125,7 +128,7 @@ src/
 | `record-prices` | Grava observação de preço (só se algo relevante mudou) |
 | `aggregate-daily` | Consolida observações do dia em `DailyPriceAggregate` |
 | `analyze-deals` | Roda o Analysis Engine e cria um `Deal` quando aplicável |
-| `notify-telegram` | Envia o card da oferta para aprovação |
+| `notify-discord` | Envia o card da oferta para aprovação |
 | `cleanup-data` | Expira deals antigos sem decisão |
 
 (Nomes de fila usam `-` em vez de `:` por restrição do BullMQ/Redis; conceitualmente correspondem a `collect:shopee` etc. do briefing original.)
@@ -137,8 +140,11 @@ Os intervalos de cada tier de polling (`POLLING_HOT_INTERVAL_MIN` etc.) são con
 `scripts/dev/` contém utilitários fora do pipeline de produção, úteis para testar o sistema manualmente:
 
 - `backfill-demo-history.ts` — popula 90 dias de histórico simulado (plateau em torno de R$199) para a oferta mock `mock-whey-dark-lab-1`, permitindo testar o Deal Score com confiança alta sem esperar dias reais de coleta.
-- `trigger-analyze.ts` — dispara a análise de deal manualmente para essa oferta e envia o card ao Telegram, sem esperar o próximo ciclo do scheduler.
+- `trigger-analyze.ts` — dispara a análise de deal manualmente para essa oferta e envia o card ao Discord, sem esperar o próximo ciclo do scheduler.
 - `inspect-offer.ts` — mostra o estado atual (últimas observações, contagem de agregações) de uma oferta no banco.
+- `test-discord.ts` — envia dois cards de teste ao canal (uma oferta honesta e uma com desconto inflado), validando token, permissões e a renderização do embed.
+- `diagnose-discord.ts` — lista os servidores e canais que o bot enxerga, com IDs e permissões. Use quando o envio falhar com `Unknown Channel`.
+- `test-shopee-adapter.ts` — exercita o `ShopeeLiveAdapter` contra a API real (busca, polling por id, geração de link com subId).
 
 Rode com `npx ts-node -r tsconfig-paths/register scripts/dev/<script>.ts`. **Importante**: pare a aplicação principal (`npm run start:dev`/`start:prod`) antes de rodar esses scripts — o Supabase Session Pooler (plano free) tem um limite baixo de conexões simultâneas (15), e rodar múltiplos processos Prisma ao mesmo tempo pode esgotar o pool (erro `EMAXCONNSESSION`).
 
@@ -183,6 +189,19 @@ O score bruto é multiplicado pelo `confidence_score` (0–1), que reflete o qua
 
 O `PreHikeDetector` procura, nos últimos 14 dias, um pico de preço relevante (≥15% acima do preço de referência) seguido de retorno ao preço normal. Quando esse padrão aparece, a "promoção" é descartada — não é publicada mesmo que pareça um desconto grande.
 
+### Desconto anunciado vs. desconto real
+
+Os dois números são gravados e **confrontados**, nunca confundidos:
+
+- **Anunciado** — vem do marketplace (ex: `priceDiscountRate` da Shopee) e é persistido em `PriceObservation.discountRate`. Serve apenas como evidência; nunca entra no Deal Score.
+- **Real** — calculado contra o preço de referência do nosso próprio histórico (`PriceReferenceService`), e é o único que decide publicação.
+
+Quando o anunciado supera o real em 15 pontos percentuais ou mais, o card de aprovação ganha borda laranja e um campo **⚠️ DESCONTO INFLADO** mostrando os dois lado a lado. O post de WhatsApp sempre risca o preço de *referência*, nunca o "de/por" da loja.
+
+## Anti-repetição de alertas
+
+Uma oferta que passa dias em promoção não pode virar um card a cada ciclo de polling (o tier HOT roda a cada 15 min). `DealsService` aplica uma janela de silêncio de **72 horas** por oferta: dentro dela, a mesma oferta só volta a alertar se o preço cair **abaixo** do que já foi alertado.
+
 ## Testes
 
 ```bash
@@ -193,7 +212,7 @@ Cobertura principal: `DealScoringService`, `PreHikeDetector`, `PriceReferenceSer
 
 ## Roadmap
 
-- **V1** (atual): Shopee + histórico + Deal Score + Telegram + WhatsApp manual
+- **V1** (atual): Shopee + histórico + Deal Score + Discord + WhatsApp manual
 - **V2**: TikTok Shop, Mercado Livre, Amazon
 - **V3**: Dashboard, analytics, aprendizado de conversão
 - **V4**: SaaS multiusuário

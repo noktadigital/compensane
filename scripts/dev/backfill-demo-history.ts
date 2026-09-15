@@ -1,7 +1,7 @@
 /**
  * Script de demonstracao (nao faz parte do pipeline de producao): popula
  * historico de preco retroativo para a oferta mock-whey-dark-lab-1, para
- * que o Deal Score tenha confianca suficiente e o card apareca no Telegram
+ * que o Deal Score tenha confianca suficiente e o card apareca no Discord
  * na primeira execucao manual local. Uso: npx ts-node -r tsconfig-paths/register scripts/dev/backfill-demo-history.ts
  */
 import { PrismaClient, Marketplace, PollingTier } from '@prisma/client';

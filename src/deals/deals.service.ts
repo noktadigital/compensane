@@ -9,6 +9,12 @@ import { DealScoringService } from './deal-scoring.service';
 import { PreHikeDetector } from './pre-hike-detector.service';
 import { EvScoringService } from './ev-scoring.service';
 
+/**
+ * Janela de silencio por oferta. Dentro dela, a mesma oferta so gera um novo
+ * alerta se o preco cair abaixo do que ja foi alertado.
+ */
+const DEAL_COOLDOWN_HOURS = 72;
+
 export interface DealAnalysisResult {
   deal: Deal | null;
   discarded: boolean;
@@ -108,6 +114,16 @@ export class DealsService {
       reasons.push(`confianca insuficiente (${confidence}) — historico curto demais`);
     }
 
+    // Anti-repeticao: sem isto, o tier HOT (a cada 15min) geraria um card novo
+    // para a MESMA promocao a cada ciclo, inundando o canal de aprovacao.
+    // So volta a alertar sobre a mesma oferta se o preco cair mais ainda.
+    const recentDeal = await this.findRecentDealForOffer(productOfferId);
+    if (recentDeal && latestObservation.priceCents >= recentDeal.priceCents) {
+      reasons.push(
+        `ja alertado em ${recentDeal.detectedAt.toISOString().slice(0, 10)} por ${(recentDeal.priceCents / 100).toFixed(2)} — preco nao caiu desde entao`,
+      );
+    }
+
     const ev = this.evScoring.compute({
       dealScore: scoreResult.finalScore,
       commissionCents: latestObservation.commissionCents ?? 0,
@@ -142,6 +158,20 @@ export class DealsService {
     );
 
     return { deal, discarded: false, reasons: [] };
+  }
+
+  /**
+   * Ultimo Deal gerado para a oferta dentro da janela de silencio. Serve para
+   * nao realertar a mesma promocao: uma oferta que ficou 3 dias em promocao
+   * nao deve virar 288 cards.
+   */
+  private async findRecentDealForOffer(productOfferId: string): Promise<Deal | null> {
+    const since = new Date(Date.now() - DEAL_COOLDOWN_HOURS * 60 * 60 * 1000);
+
+    return this.prisma.deal.findFirst({
+      where: { productOfferId, detectedAt: { gte: since } },
+      orderBy: { detectedAt: 'desc' },
+    });
   }
 
   /** Ofertas com Deal Score suficiente para publicacao (secao 11), ainda nao publicadas. */
