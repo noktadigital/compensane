@@ -11,19 +11,57 @@ import {
 import { buildShopeeAuthHeader } from './shopee-signature.util';
 
 /**
+ * Campos do node ProductOfferV2 confirmados por introspeccao contra a API
+ * real. Centralizados para que searchOffers e getOffersByIds nunca divirjam.
+ *
+ * priceDiscountRate e o desconto que a PROPRIA Shopee anuncia. Nao usamos
+ * esse numero como verdade — ele e exatamente o tipo de dado que mascara
+ * falso desconto. Guardamos em `raw` para poder confrontar o anunciado
+ * contra o nosso historico de precos e flagrar a divergencia.
+ */
+const OFFER_NODE_FIELDS = `
+  itemId
+  shopId
+  shopName
+  productName
+  imageUrl
+  price
+  priceMin
+  priceMax
+  priceDiscountRate
+  commissionRate
+  commission
+  sales
+  ratingStar
+  productLink
+  offerLink
+`;
+
+const PRODUCT_OFFER_BY_ID_QUERY = `
+  query ProductOfferById($itemId: Int64) {
+    productOfferV2(itemId: $itemId) {
+      nodes { ${OFFER_NODE_FIELDS} }
+    }
+  }
+`;
+
+/**
  * Adapter para a Shopee Affiliate Open API (GraphQL).
  *
- * IMPORTANTE: a Shopee versiona e restringe o acesso a esta API por conta
- * de afiliado aprovada. Os nomes de operacao abaixo (productOfferV2,
- * shopOfferV2, generateShortLink, conversionReport) refletem o que a
- * documentacao publica descreve, mas o schema GraphQL exato (campos
- * disponiveis, paginacao, tipos) so pode ser confirmado com uma conta e
- * credenciais reais. Antes de ir para producao:
- *   1. Validar o schema via introspeccao GraphQL com credenciais reais.
- *   2. Ajustar os campos de `buildXxxQuery` conforme a resposta real.
- *   3. Tratar paginacao (cursor) de acordo com o retorno da API.
+ * Schema validado por introspeccao contra a API real (conta de afiliado
+ * aprovada). Particularidades que custaram descoberta e nao sao obvias:
  *
- * Ate la, use SHOPEE_MODE=mock (ShopeeMockAdapter) para desenvolvimento.
+ *   - Nao existe `itemIdList`: productOfferV2 busca UM itemId por chamada.
+ *   - `Int64` (itemId, shopId) precisa ir como STRING no JSON; como number
+ *     a API responde {"code":10010,"message":"wrong type"}.
+ *   - `generateShortLink` recebe um input object (ShortLinkInput), nao
+ *     argumentos soltos.
+ *   - Todos os precos e taxas voltam como STRING ("99.9", "0.53"), e
+ *     commissionRate e fracao (0.53 = 53%), nao porcentagem.
+ *
+ * Queries disponiveis: productOfferV2, shopOfferV2, shopeeOfferV2,
+ * conversionReport, validatedReport, partnerOrderReport, listItemFeeds,
+ * getItemFeedData. Mutations: generateShortLink, generateBatchShortLink.
  */
 @Injectable()
 export class ShopeeLiveAdapter implements MarketplaceAdapter {
@@ -74,21 +112,7 @@ export class ShopeeLiveAdapter implements MarketplaceAdapter {
     const query = `
       query ProductOfferV2($keyword: String, $page: Int, $limit: Int) {
         productOfferV2(keyword: $keyword, page: $page, limit: $limit) {
-          nodes {
-            itemId
-            shopId
-            productName
-            imageUrl
-            price
-            priceMin
-            priceMax
-            commissionRate
-            commission
-            sales
-            ratingStar
-            productLink
-            offerLink
-          }
+          nodes { ${OFFER_NODE_FIELDS} }
         }
       }
     `;
@@ -105,60 +129,80 @@ export class ShopeeLiveAdapter implements MarketplaceAdapter {
   }
 
   async getOffersByIds(params: GetOffersByIdsParams): Promise<RawMarketplaceOffer[]> {
-    // A API publica nao documenta um "get by ids" direto para item — na pratica
-    // o polling de itens conhecidos tende a reusar productOfferV2 filtrando por
-    // itemId, ou shopOfferV2 quando a oferta e por loja. Ajustar conforme schema real.
-    const query = `
-      query ProductOfferV2ByIds($itemIdList: [Int!]) {
-        productOfferV2(itemIdList: $itemIdList) {
-          nodes {
-            itemId
-            shopId
-            productName
-            imageUrl
-            price
-            priceMin
-            priceMax
-            commissionRate
-            commission
-            sales
-            ratingStar
-            productLink
-            offerLink
-          }
+    // A API nao aceita lista de ids: productOfferV2 filtra por UM itemId por
+    // chamada (nao existe itemIdList no schema). Entao o polling faz uma
+    // chamada por item, sequencialmente, para nao disparar rate limit.
+    //
+    // itemId e Int64 e precisa ir como STRING no JSON — enviar como number
+    // retorna {"code":10010,"message":"wrong type"} (verificado contra a API).
+    const offers: RawMarketplaceOffer[] = [];
+
+    for (const externalId of params.externalIds) {
+      try {
+        const data = await this.graphqlRequest<{
+          productOfferV2: { nodes: Record<string, any>[] };
+        }>(PRODUCT_OFFER_BY_ID_QUERY, { itemId: String(externalId) });
+
+        const node = data.productOfferV2?.nodes?.[0];
+        if (node) {
+          offers.push(this.mapNodeToOffer(node));
+        } else {
+          // Item saiu do catalogo de ofertas de afiliado (ou acabou o estoque).
+          this.logger.warn(`Shopee nao retornou oferta para itemId=${externalId}`);
         }
+      } catch (err) {
+        // Um item que falha nao pode derrubar o lote inteiro do polling.
+        this.logger.error(
+          `Falha ao buscar itemId=${externalId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
-    `;
+    }
 
-    const data = await this.graphqlRequest<{
-      productOfferV2: { nodes: Record<string, any>[] };
-    }>(query, {
-      itemIdList: params.externalIds.map((id) => Number(id)),
-    });
-
-    return (data.productOfferV2?.nodes ?? []).map((node) => this.mapNodeToOffer(node));
+    return offers;
   }
 
   async generateAffiliateLink(offer: RawMarketplaceOffer): Promise<AffiliateLinkResult> {
-    // Operacao generateShortLink.
-    const query = `
-      mutation GenerateShortLink($originUrl: String!, $subIds: [String!]) {
-        generateShortLink(originUrl: $originUrl, subIds: $subIds) {
+    // A mutation recebe um input object (ShortLinkInput), nao argumentos
+    // soltos: { originUrl: String!, subIds: [String!] } — confirmado por
+    // introspeccao contra a API real.
+    const mutation = `
+      mutation GenerateShortLink($input: ShortLinkInput!) {
+        generateShortLink(input: $input) {
           shortLink
         }
       }
     `;
 
-    const data = await this.graphqlRequest<{ generateShortLink: { shortLink: string } }>(query, {
-      originUrl: offer.url,
-      subIds: ['achadinhos'],
-    });
+    const subId = 'achadinhos';
 
-    return {
-      originalLink: offer.url,
-      shortLink: data.generateShortLink?.shortLink,
-      subId: 'achadinhos',
-    };
+    try {
+      const data = await this.graphqlRequest<{ generateShortLink: { shortLink: string } }>(
+        mutation,
+        { input: { originUrl: offer.url, subIds: [subId] } },
+      );
+
+      return {
+        originalLink: offer.url,
+        shortLink: data.generateShortLink?.shortLink,
+        subId,
+      };
+    } catch (err) {
+      // productOfferV2 ja devolve um offerLink de afiliado pronto. Se a
+      // geracao sob demanda falhar, caimos nele em vez de perder a oferta —
+      // mas sem o subId, entao o clique nao fica atribuido a esta campanha.
+      const fallback = (offer.raw as Record<string, any> | undefined)?.offerLink;
+      this.logger.error(
+        `generateShortLink falhou para ${offer.externalId}: ${
+          err instanceof Error ? err.message : String(err)
+        }${fallback ? ' — usando offerLink do catalogo (sem subId)' : ''}`,
+      );
+
+      if (!fallback) {
+        throw err;
+      }
+
+      return { originalLink: offer.url, shortLink: fallback };
+    }
   }
 
   private mapNodeToOffer(node: Record<string, any>): RawMarketplaceOffer {
@@ -168,14 +212,23 @@ export class ShopeeLiveAdapter implements MarketplaceAdapter {
       ? Math.round(Number(node.commission) * 100)
       : Math.round((priceCents * commissionRateBp) / 10000);
 
+    // Desconto ANUNCIADO pela Shopee (0-100). Guardamos por auditoria, mas o
+    // sistema nunca decide por ele: o desconto real sai do nosso proprio
+    // historico de precos. Divergencia entre os dois e justamente o sinal de
+    // falso desconto (preco inflado antes da "promocao").
+    const advertisedDiscountRate =
+      node.priceDiscountRate != null ? Number(node.priceDiscountRate) / 100 : undefined;
+
     return {
       marketplace: Marketplace.SHOPEE,
       externalId: String(node.itemId),
       externalShopId: node.shopId ? String(node.shopId) : undefined,
+      sellerName: node.shopName || undefined,
       title: node.productName,
       url: node.productLink ?? node.offerLink,
       imageUrl: node.imageUrl,
       priceCents,
+      discountRate: advertisedDiscountRate,
       commissionRateBp,
       commissionCents,
       inStock: true, // API de oferta nao costuma retornar estoque; refinar via getItemFeedData se necessario.
