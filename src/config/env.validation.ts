@@ -42,6 +42,10 @@ export class EnvironmentVariables {
   SOCIAL_PREVIEW_DESCRIPTION?: string = 'As melhores ofertas, direto no seu WhatsApp.';
 
   @IsString()
+  @IsOptional()
+  WHATSAPP_CHANNEL_URL?: string;
+
+  @IsString()
   @IsNotEmpty()
   DATABASE_URL!: string;
 

@@ -45,6 +45,7 @@ export class AppConfigService {
         'SOCIAL_PREVIEW_DESCRIPTION',
         'As melhores ofertas, direto no seu WhatsApp.',
       ),
+      channelUrl: this.config.get<string>('WHATSAPP_CHANNEL_URL', ''),
     };
   }
 

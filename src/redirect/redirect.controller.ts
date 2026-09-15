@@ -38,6 +38,33 @@ export class RedirectController {
     private readonly appConfig: AppConfigService,
   ) {}
 
+  /**
+   * Rota fixa para divulgacao do canal do WhatsApp em si (ex: anuncios do
+   * tipo "Siga o canal"), sem depender de nenhum AffiliateLink no banco.
+   * Precisa vir ANTES de :slug na ordem de declaracao das rotas do Nest.
+   */
+  @Get('canal')
+  async redirectToChannel(@Req() req: Request, @Res() res: Response) {
+    const { channelUrl } = this.appConfig.socialPreview;
+
+    if (!channelUrl) {
+      throw new NotFoundException('WHATSAPP_CHANNEL_URL nao configurado.');
+    }
+
+    const ip = req.ip ?? req.socket.remoteAddress ?? '';
+    const ipHash = ip ? createHash('sha256').update(ip).digest('hex').slice(0, 16) : undefined;
+
+    await this.trackingService.recordClick({
+      slug: 'canal',
+      ipHash,
+      userAgent: req.headers['user-agent'],
+    });
+
+    const html = this.buildPreviewPage(channelUrl, 'canal');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(200).send(html);
+  }
+
   @Get(':slug')
   async redirect(@Param('slug') slug: string, @Req() req: Request, @Res() res: Response) {
     const affiliateLink = await this.prisma.affiliateLink.findUnique({
