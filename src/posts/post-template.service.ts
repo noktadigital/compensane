@@ -3,8 +3,19 @@ import { Injectable } from '@nestjs/common';
 export interface PostTemplateData {
   title: string;
   priceCents: number;
-  /** Preco de referencia apurado pelo nosso historico — vira o valor riscado. */
-  referencePriceCents?: number | null;
+  /**
+   * Preco "de" ANUNCIADO pela loja — e ele que vira o valor riscado no post.
+   *
+   * Deliberadamente NAO usamos aqui o nosso preco de referencia: o cliente
+   * abre o link e confere os numeros na pagina do produto. Um riscado que
+   * nao bate com o que a loja exibe queima a credibilidade do canal.
+   *
+   * Isso nao afrouxa o criterio: quem decide SE a oferta vira post continua
+   * sendo o nosso historico (DealsService descarta desconto real abaixo do
+   * minimo e pre-hike). O historico filtra a entrada; a loja fornece os
+   * numeros exibidos. Papeis diferentes, sem conflito.
+   */
+  originalPriceCents?: number | null;
   discountRate?: number | null;
   freeShipping?: boolean;
   link: string;
@@ -108,19 +119,20 @@ export class PostTemplateService {
   /**
    * Texto pronto para colar no WhatsApp, apos aprovacao.
    *
-   * O preco anterior exibido e o preco de REFERENCIA apurado pelo nosso
-   * historico — nunca o "de/por" anunciado pela loja. E essa a diferenca
-   * entre divulgar um desconto real e repassar um falso desconto.
+   * Os numeros exibidos sao os da LOJA (ver `originalPriceCents`), porque o
+   * cliente consegue conferi-los na pagina do produto. A garantia de que o
+   * desconto e real vem de antes: so chega aqui oferta que passou pelo
+   * filtro do nosso historico.
    */
   buildWhatsappPost(data: PostTemplateData): string {
     const lines = ['🔥 OFERTA QUE COMPENSA!', '', `🛍️ ${data.title}`, '', `💰 ${formatBRL(data.priceCents)}`];
 
     // ~texto~ e o riscado do WhatsApp.
-    if (data.referencePriceCents && data.referencePriceCents > data.priceCents) {
+    if (data.originalPriceCents && data.originalPriceCents > data.priceCents) {
       const offPercent = Math.round(
-        ((data.referencePriceCents - data.priceCents) / data.referencePriceCents) * 100,
+        ((data.originalPriceCents - data.priceCents) / data.originalPriceCents) * 100,
       );
-      lines.push(`~${formatBRL(data.referencePriceCents)}~ | ${offPercent}% OFF`);
+      lines.push(`~${formatBRL(data.originalPriceCents)}~ | ${offPercent}% OFF`);
     }
 
     if (data.benefits?.length) {

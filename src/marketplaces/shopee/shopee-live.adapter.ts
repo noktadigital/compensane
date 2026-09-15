@@ -219,6 +219,19 @@ export class ShopeeLiveAdapter implements MarketplaceAdapter {
     const advertisedDiscountRate =
       node.priceDiscountRate != null ? Number(node.priceDiscountRate) / 100 : undefined;
 
+    // A Shopee NAO devolve o preco "de" como campo — so a taxa de desconto.
+    // Derivamos para exibir no post o mesmo valor riscado que o cliente ve na
+    // pagina do produto: um riscado que nao bate com o que a loja mostra
+    // queima a credibilidade do canal.
+    //
+    // A taxa vem arredondada em inteiro, entao o derivado pode diferir em
+    // centavos do exibido pela Shopee; arredondar para o real mais proximo
+    // esconde essa diferenca na pratica.
+    const originalPriceCents =
+      advertisedDiscountRate && advertisedDiscountRate > 0 && advertisedDiscountRate < 1
+        ? Math.round(priceCents / (1 - advertisedDiscountRate) / 100) * 100
+        : undefined;
+
     return {
       marketplace: Marketplace.SHOPEE,
       externalId: String(node.itemId),
@@ -228,6 +241,7 @@ export class ShopeeLiveAdapter implements MarketplaceAdapter {
       url: node.productLink ?? node.offerLink,
       imageUrl: node.imageUrl,
       priceCents,
+      originalPriceCents,
       discountRate: advertisedDiscountRate,
       commissionRateBp,
       commissionCents,

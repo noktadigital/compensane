@@ -105,12 +105,19 @@ export class DiscordInteractionService implements OnApplicationBootstrap {
     // registra clique e serve preview de Open Graph correto para anuncios pagos.
     const finalLink = `${this.appConfig.appUrl}/r/${storedLink.id}`;
 
+    // O valor riscado do post e o preco "de" da LOJA, nao o nosso preco de
+    // referencia: o cliente abre o link e confere os numeros na pagina do
+    // produto. Ele vive na observacao de preco mais recente, nao no Deal.
+    const latestObservation = await this.prisma.priceObservation.findFirst({
+      where: { productOfferId: deal.productOfferId },
+      orderBy: { observedAt: 'desc' },
+      select: { originalPriceCents: true },
+    });
+
     const whatsappText = this.postTemplate.buildWhatsappPost({
       title: deal.productOffer.product.title,
       priceCents: deal.priceCents,
-      // Preco de referencia do NOSSO historico — e ele que vira o valor
-      // riscado no post. Sem isso o "XX% OFF" nunca aparece.
-      referencePriceCents: deal.referencePriceCents,
+      originalPriceCents: latestObservation?.originalPriceCents,
       discountRate: deal.discountRate,
       freeShipping: deal.freeShipping,
       link: finalLink,

@@ -51,7 +51,7 @@ describe('PostTemplateService', () => {
     const text = service.buildWhatsappPost({
       title: 'Whey Dark Lab Isolate Protein Fuse 1,8kg',
       priceCents: 17090,
-      referencePriceCents: 22490,
+      originalPriceCents: 22490,
       discountRate: 0.24,
       freeShipping: true,
       link: 'https://achadinhos.app/r/abc123',
@@ -72,7 +72,7 @@ describe('PostTemplateService', () => {
     const text = service.buildWhatsappPost({
       title: 'Fone Bluetooth TWS',
       priceCents: 7000,
-      referencePriceCents: 10000,
+      originalPriceCents: 10000,
       freeShipping: true,
       benefits: ['Bateria de 30h', 'Cancelamento de ruído'],
       link: 'https://achadinhos.app/r/xyz',
@@ -83,9 +83,9 @@ describe('PostTemplateService', () => {
     expect(text).not.toContain('🚚 Frete grátis');
   });
 
-  it('omite o preco riscado quando nao ha referencia confiavel do historico', () => {
+  it('omite o preco riscado quando a loja nao anuncia preco "de"', () => {
     const text = service.buildWhatsappPost({
-      title: 'Produto sem historico',
+      title: 'Produto sem desconto anunciado',
       priceCents: 5000,
       link: 'https://achadinhos.app/r/sem-ref',
     });
