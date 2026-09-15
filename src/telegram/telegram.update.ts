@@ -6,6 +6,8 @@ import { DealsService } from '@/deals/deals.service';
 import { TrackingService } from '@/tracking/tracking.service';
 import { PostTemplateService } from '@/posts/post-template.service';
 import { MarketplaceAdapterRegistry } from '@/marketplaces/core/marketplace-adapter.registry';
+import { AppConfigService } from '@/config/app-config.service';
+import { PrismaService } from '@/database/prisma.service';
 import { TrackingMetricsFormatter } from './tracking-metrics.formatter';
 
 /**
@@ -24,6 +26,8 @@ export class TelegramUpdate {
     private readonly postTemplate: PostTemplateService,
     private readonly marketplaceRegistry: MarketplaceAdapterRegistry,
     private readonly metricsFormatter: TrackingMetricsFormatter,
+    private readonly appConfig: AppConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Start()
@@ -58,7 +62,19 @@ export class TelegramUpdate {
       inStock: true,
     });
 
-    const finalLink = affiliateLink.shortLink ?? affiliateLink.originalLink;
+    const storedLink = await this.prisma.affiliateLink.create({
+      data: {
+        dealId: deal.id,
+        productOfferId: deal.productOffer.id,
+        originalLink: affiliateLink.originalLink,
+        shortLink: affiliateLink.shortLink,
+        subId: affiliateLink.subId,
+      },
+    });
+
+    // Usa o redirecionador proprio /r/{slug} (secao 15) em vez do link direto:
+    // registra clique e serve preview de Open Graph correto para anuncios pagos.
+    const finalLink = `${this.appConfig.appUrl}/r/${storedLink.id}`;
 
     const whatsappText = this.postTemplate.buildWhatsappPost({
       title: deal.productOffer.product.title,

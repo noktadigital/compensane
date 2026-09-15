@@ -30,6 +30,18 @@ export class EnvironmentVariables {
   LOG_LEVEL: string = 'debug';
 
   @IsString()
+  @IsOptional()
+  SOCIAL_PREVIEW_IMAGE_URL?: string;
+
+  @IsString()
+  @IsOptional()
+  SOCIAL_PREVIEW_TITLE?: string = 'Compensa, né?';
+
+  @IsString()
+  @IsOptional()
+  SOCIAL_PREVIEW_DESCRIPTION?: string = 'As melhores ofertas, direto no seu WhatsApp.';
+
+  @IsString()
   @IsNotEmpty()
   DATABASE_URL!: string;
 

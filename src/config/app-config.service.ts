@@ -30,6 +30,24 @@ export class AppConfigService {
     return this.config.get<string>('LOG_LEVEL', 'debug');
   }
 
+  /**
+   * Preview social generico usado na pagina de redirect (secao 15) para que
+   * anuncios pagos (ex: Facebook/Instagram Ads) exibam a arte da marca em
+   * vez da imagem que a rede social extrai do destino final (ex: o logo do
+   * canal de WhatsApp). O Facebook le meta tags Open Graph da PRIMEIRA
+   * pagina do link, nao do destino redirecionado.
+   */
+  get socialPreview() {
+    return {
+      imageUrl: this.config.get<string>('SOCIAL_PREVIEW_IMAGE_URL', ''),
+      title: this.config.get<string>('SOCIAL_PREVIEW_TITLE', 'Compensa, né?'),
+      description: this.config.get<string>(
+        'SOCIAL_PREVIEW_DESCRIPTION',
+        'As melhores ofertas, direto no seu WhatsApp.',
+      ),
+    };
+  }
+
   get databaseUrl(): string {
     return this.config.getOrThrow<string>('DATABASE_URL');
   }
