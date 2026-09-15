@@ -46,6 +46,18 @@ export class EnvironmentVariables {
   WHATSAPP_CHANNEL_URL?: string;
 
   @IsString()
+  @IsOptional()
+  SOCIAL_PREVIEW_IMAGE_WIDTH?: string;
+
+  @IsString()
+  @IsOptional()
+  SOCIAL_PREVIEW_IMAGE_HEIGHT?: string;
+
+  @IsString()
+  @IsOptional()
+  FACEBOOK_PIXEL_ID?: string;
+
+  @IsString()
   @IsNotEmpty()
   DATABASE_URL!: string;
 

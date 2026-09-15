@@ -5,6 +5,13 @@ import { PrismaService } from '@/database/prisma.service';
 import { TrackingService } from '@/tracking/tracking.service';
 import { AppConfigService } from '@/config/app-config.service';
 
+/**
+ * Folga antes do redirect para o Facebook Pixel conseguir enviar os eventos
+ * (PageView + ClickToChannel). Sem isso, a navegacao cancela a requisicao e
+ * boa parte dos cliques nao e contabilizada.
+ */
+const REDIRECT_DELAY_MS = 600;
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -94,33 +101,71 @@ export class RedirectController {
   }
 
   private buildPreviewPage(destination: string, slug: string): string {
-    const { imageUrl, title, description } = this.appConfig.socialPreview;
+    const { imageUrl, title, description, imageWidth, imageHeight, facebookPixelId } =
+      this.appConfig.socialPreview;
     const pageUrl = `${this.appConfig.appUrl}/r/${slug}`;
 
     const safeTitle = escapeHtml(title);
     const safeDescription = escapeHtml(description);
     const safeDestination = escapeHtml(destination);
 
+    // NAO usar <meta http-equiv="refresh">: o crawler do Facebook OBEDECE
+    // essa tag, segue para o destino (whatsapp.com, dominio da propria Meta)
+    // e aborta com "Os URLs do Facebook nao podem ser rastreados" antes de
+    // ler as tags og daqui. O redirecionamento tem que ser so via JavaScript,
+    // que o crawler nao executa — ele fica na pagina e le o preview correto,
+    // enquanto a pessoa real e redirecionada normalmente.
     return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="0;url=${safeDestination}">
 <title>${safeTitle}</title>
 <meta property="og:title" content="${safeTitle}">
 <meta property="og:description" content="${safeDescription}">
 ${imageUrl ? `<meta property="og:image" content="${escapeHtml(imageUrl)}">` : ''}
+${imageUrl && imageWidth ? `<meta property="og:image:width" content="${escapeHtml(imageWidth)}">` : ''}
+${imageUrl && imageHeight ? `<meta property="og:image:height" content="${escapeHtml(imageHeight)}">` : ''}
 <meta property="og:type" content="website">
 <meta property="og:url" content="${escapeHtml(pageUrl)}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${safeTitle}">
 <meta name="twitter:description" content="${safeDescription}">
 ${imageUrl ? `<meta name="twitter:image" content="${escapeHtml(imageUrl)}">` : ''}
+${facebookPixelId ? this.buildPixelSnippet(facebookPixelId, slug) : ''}
 </head>
 <body>
 <p>Redirecionando... <a href="${safeDestination}">clique aqui se nao for redirecionado automaticamente</a>.</p>
-<script>window.location.replace(${JSON.stringify(destination)});</script>
+<script>
+setTimeout(function () {
+  window.location.replace(${JSON.stringify(destination)});
+}, ${REDIRECT_DELAY_MS});
+</script>
 </body>
 </html>`;
+  }
+
+  /**
+   * Snippet do Facebook Pixel. Dispara PageView e um evento customizado
+   * identificando qual link foi clicado, permitindo otimizar a campanha
+   * por essa acao no Gerenciador de Anuncios. O redirect so acontece apos
+   * REDIRECT_DELAY_MS para dar tempo do evento ser enviado — sem essa
+   * folga, a navegacao cancela a requisicao e o clique nao e contabilizado.
+   */
+  private buildPixelSnippet(pixelId: string, slug: string): string {
+    return `<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window,document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', ${JSON.stringify(pixelId)});
+fbq('track', 'PageView');
+fbq('trackCustom', 'ClickToChannel', { slug: ${JSON.stringify(slug)} });
+</script>
+<noscript><img height="1" width="1" style="display:none" alt=""
+src="https://www.facebook.com/tr?id=${encodeURIComponent(pixelId)}&ev=PageView&noscript=1"></noscript>`;
   }
 }

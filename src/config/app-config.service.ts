@@ -46,6 +46,9 @@ export class AppConfigService {
         'As melhores ofertas, direto no seu WhatsApp.',
       ),
       channelUrl: this.config.get<string>('WHATSAPP_CHANNEL_URL', ''),
+      imageWidth: this.config.get<string>('SOCIAL_PREVIEW_IMAGE_WIDTH', ''),
+      imageHeight: this.config.get<string>('SOCIAL_PREVIEW_IMAGE_HEIGHT', ''),
+      facebookPixelId: this.config.get<string>('FACEBOOK_PIXEL_ID', ''),
     };
   }
 
