@@ -18,14 +18,14 @@ import { DatabaseModule } from '@/database/database.module';
 import { MarketplaceCoreModule } from '@/marketplaces/core/marketplace-core.module';
 import { ShopeeModule } from '@/marketplaces/shopee/shopee.module';
 import { DealsModule } from '@/deals/deals.module';
-import { TelegramModule } from '@/telegram/telegram.module';
+import { DiscordModule } from '@/discord/discord.module';
 import { DealsService } from '@/deals/deals.service';
-import { TelegramService } from '@/telegram/telegram.service';
+import { DiscordClientService } from '@/discord/discord-client.service';
 import { AppConfigService } from '@/config/app-config.service';
 import { PrismaClient, Marketplace } from '@prisma/client';
 
 @Module({
-  imports: [ConfigModule, DatabaseModule, MarketplaceCoreModule, ShopeeModule, DealsModule, TelegramModule],
+  imports: [ConfigModule, DatabaseModule, MarketplaceCoreModule, ShopeeModule, DealsModule, DiscordModule],
 })
 class AnalyzeOnlyModule {}
 
@@ -82,7 +82,7 @@ async function main() {
   const app = await NestFactory.createApplicationContext(AnalyzeOnlyModule, { logger: ['log', 'warn', 'error'] });
 
   const dealsService = app.get(DealsService);
-  const telegramService = app.get(TelegramService);
+  const discordClient = app.get(DiscordClientService);
   const appConfig = app.get(AppConfigService);
 
   const result = await dealsService.analyzeOffer(offer.id);
@@ -99,7 +99,7 @@ async function main() {
     if (result.deal.dealScore >= appConfig.dealRules.publishScore) {
       const dealWithOffer = await dealsService.getDealWithOffer(result.deal.id);
       if (dealWithOffer) {
-        await telegramService.sendDealCard(
+        await discordClient.sendDealCard(
           dealWithOffer.id,
           {
             title: dealWithOffer.productOffer.product.title,
@@ -114,7 +114,7 @@ async function main() {
           },
           dealWithOffer.productOffer.imageUrl,
         );
-        console.log('Card enviado ao Telegram!');
+        console.log('Card enviado ao Discord!');
       }
     } else {
       console.log(`Score ${result.deal.dealScore} abaixo do minimo de publicacao (${appConfig.dealRules.publishScore})`);

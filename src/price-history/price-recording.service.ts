@@ -36,10 +36,20 @@ export class PriceRecordingService {
       return null;
     }
 
+    // Desconto ANUNCIADO pela loja. Preferimos o que o marketplace informa
+    // direto (ex: priceDiscountRate da Shopee, que nao vem acompanhado de
+    // originalPriceCents) e so calculamos a partir do preco "original" quando
+    // o marketplace nao informa a taxa.
+    //
+    // Este numero NUNCA decide nada: o desconto real sai do nosso proprio
+    // historico. Ele e gravado justamente para ser confrontado com o real —
+    // divergencia entre os dois e o sinal de falso desconto.
     const discountRate =
-      raw.originalPriceCents && raw.originalPriceCents > raw.priceCents
-        ? Number(((raw.originalPriceCents - raw.priceCents) / raw.originalPriceCents).toFixed(4))
-        : null;
+      raw.discountRate != null && raw.discountRate > 0
+        ? Number(raw.discountRate.toFixed(4))
+        : raw.originalPriceCents && raw.originalPriceCents > raw.priceCents
+          ? Number(((raw.originalPriceCents - raw.priceCents) / raw.originalPriceCents).toFixed(4))
+          : null;
 
     const observation = await this.prisma.priceObservation.create({
       data: {

@@ -11,7 +11,7 @@ async function bootstrap() {
   });
 
   // Rede de seguranca: uma promise rejeitada nao tratada em alguma
-  // integracao externa (ex: Telegram, chamadas de marketplace) nunca deve
+  // integracao externa (ex: Discord, chamadas de marketplace) nunca deve
   // derrubar o processo inteiro silenciosamente. Loga e segue rodando.
   process.on('unhandledRejection', (reason) => {
     Logger.error('Unhandled promise rejection', reason as Error, 'Process');

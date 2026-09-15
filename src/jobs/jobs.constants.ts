@@ -9,7 +9,7 @@ export const QUEUE_COLLECT_MERCADO_LIVRE = 'collect-mercado-livre';
 export const QUEUE_RECORD_PRICES = 'record-prices';
 export const QUEUE_AGGREGATE_DAILY = 'aggregate-daily';
 export const QUEUE_ANALYZE_DEALS = 'analyze-deals';
-export const QUEUE_NOTIFY_TELEGRAM = 'notify-telegram';
+export const QUEUE_NOTIFY_DISCORD = 'notify-discord';
 export const QUEUE_CLEANUP_DATA = 'cleanup-data';
 
 export const JOB_COLLECT_TIER = 'collect-tier';

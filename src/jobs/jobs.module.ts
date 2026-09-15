@@ -7,14 +7,14 @@ import { PriceHistoryModule } from '@/price-history/price-history.module';
 import { DealsModule } from '@/deals/deals.module';
 import { ShopeeModule } from '@/marketplaces/shopee/shopee.module';
 import { MercadoLivreModule } from '@/marketplaces/mercado-livre/mercado-livre.module';
-import { TelegramModule } from '@/telegram/telegram.module';
+import { DiscordModule } from '@/discord/discord.module';
 import {
   QUEUE_COLLECT_SHOPEE,
   QUEUE_COLLECT_MERCADO_LIVRE,
   QUEUE_RECORD_PRICES,
   QUEUE_AGGREGATE_DAILY,
   QUEUE_ANALYZE_DEALS,
-  QUEUE_NOTIFY_TELEGRAM,
+  QUEUE_NOTIFY_DISCORD,
   QUEUE_CLEANUP_DATA,
 } from './jobs.constants';
 import { QUEUE_DISCOVER_SHOPEE } from './processors/discover-shopee.processor';
@@ -25,7 +25,7 @@ import { CollectMercadoLivreProcessor } from './processors/collect-mercado-livre
 import { DiscoverMercadoLivreProcessor } from './processors/discover-mercado-livre.processor';
 import { RecordPricesProcessor } from './processors/record-prices.processor';
 import { AnalyzeDealsProcessor } from './processors/analyze-deals.processor';
-import { NotifyTelegramProcessor } from './processors/notify-telegram.processor';
+import { NotifyDiscordProcessor } from './processors/notify-discord.processor';
 import { AggregateDailyProcessor } from './processors/aggregate-daily.processor';
 import { CleanupDataProcessor } from './processors/cleanup-data.processor';
 import { JobsSchedulerService } from './jobs-scheduler.service';
@@ -54,7 +54,7 @@ import { JobsSchedulerService } from './jobs-scheduler.service';
       { name: QUEUE_RECORD_PRICES },
       { name: QUEUE_AGGREGATE_DAILY },
       { name: QUEUE_ANALYZE_DEALS },
-      { name: QUEUE_NOTIFY_TELEGRAM },
+      { name: QUEUE_NOTIFY_DISCORD },
       { name: QUEUE_CLEANUP_DATA },
     ),
     ProductsModule,
@@ -62,7 +62,7 @@ import { JobsSchedulerService } from './jobs-scheduler.service';
     DealsModule,
     ShopeeModule,
     MercadoLivreModule,
-    TelegramModule,
+    DiscordModule,
   ],
   providers: [
     CollectShopeeProcessor,
@@ -71,7 +71,7 @@ import { JobsSchedulerService } from './jobs-scheduler.service';
     DiscoverMercadoLivreProcessor,
     RecordPricesProcessor,
     AnalyzeDealsProcessor,
-    NotifyTelegramProcessor,
+    NotifyDiscordProcessor,
     AggregateDailyProcessor,
     CleanupDataProcessor,
     JobsSchedulerService,

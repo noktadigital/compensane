@@ -4,7 +4,7 @@ import { Job, Queue } from 'bullmq';
 import { DealsService } from '@/deals/deals.service';
 import { AppConfigService } from '@/config/app-config.service';
 import { ProductsService } from '@/products/products.service';
-import { QUEUE_ANALYZE_DEALS, QUEUE_NOTIFY_TELEGRAM, JOB_NOTIFY_DEAL } from '../jobs.constants';
+import { QUEUE_ANALYZE_DEALS, QUEUE_NOTIFY_DISCORD, JOB_NOTIFY_DEAL } from '../jobs.constants';
 
 interface AnalyzeDealJobData {
   productOfferId: string;
@@ -13,7 +13,7 @@ interface AnalyzeDealJobData {
 /**
  * Job analyze:deals (secao 19). Roda o Analysis Engine para a oferta e,
  * se o deal detectado atingir o score de publicacao, enfileira a
- * notificacao no Telegram. Tambem promove a oferta para o tier HOT
+ * notificacao no Discord. Tambem promove a oferta para o tier HOT
  * quando uma queda relevante e detectada (secao 20).
  */
 @Processor(QUEUE_ANALYZE_DEALS, { concurrency: 5 })
@@ -24,7 +24,7 @@ export class AnalyzeDealsProcessor extends WorkerHost {
     private readonly dealsService: DealsService,
     private readonly appConfig: AppConfigService,
     private readonly productsService: ProductsService,
-    @InjectQueue(QUEUE_NOTIFY_TELEGRAM) private readonly notifyQueue: Queue,
+    @InjectQueue(QUEUE_NOTIFY_DISCORD) private readonly notifyQueue: Queue,
   ) {
     super();
   }

@@ -67,11 +67,11 @@ export class EnvironmentVariables {
 
   @IsString()
   @IsOptional()
-  TELEGRAM_BOT_TOKEN?: string;
+  DISCORD_BOT_TOKEN?: string;
 
   @IsString()
   @IsOptional()
-  TELEGRAM_ADMIN_CHAT_ID?: string;
+  DISCORD_CHANNEL_ID?: string;
 
   @IsString()
   @IsOptional()

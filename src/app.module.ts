@@ -9,7 +9,7 @@ import { PriceHistoryModule } from './price-history/price-history.module';
 import { DealsModule } from './deals/deals.module';
 import { PostsModule } from './posts/posts.module';
 import { TrackingModule } from './tracking/tracking.module';
-import { TelegramModule } from './telegram/telegram.module';
+import { DiscordModule } from './discord/discord.module';
 import { JobsModule } from './jobs/jobs.module';
 import { RedirectModule } from './redirect/redirect.module';
 import { HealthModule } from './health/health.module';
@@ -26,7 +26,7 @@ import { HealthModule } from './health/health.module';
     DealsModule,
     PostsModule,
     TrackingModule,
-    TelegramModule,
+    DiscordModule,
     JobsModule,
     RedirectModule,
     HealthModule,

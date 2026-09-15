@@ -11,8 +11,8 @@ describe('PostTemplateService', () => {
     service = new PostTemplateService();
   });
 
-  it('monta o card do Telegram com score, preco, desconto, comissao e frete gratis', () => {
-    const card = service.buildTelegramCard({
+  it('monta o card de aprovacao com score, preco, desconto, comissao e frete gratis', () => {
+    const card = service.buildDealCard({
       title: 'Whey Dark Lab Isolate Protein Fuse 1,8kg',
       priceCents: 17090,
       discountRate: 0.24,
@@ -35,7 +35,7 @@ describe('PostTemplateService', () => {
   });
 
   it('omite linhas opcionais quando os dados nao estao presentes', () => {
-    const card = service.buildTelegramCard({
+    const card = service.buildDealCard({
       title: 'Produto simples',
       priceCents: 1000,
       dealScore: 75,

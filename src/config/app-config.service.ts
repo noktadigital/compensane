@@ -60,10 +60,10 @@ export class AppConfigService {
     return this.config.getOrThrow<string>('REDIS_URL');
   }
 
-  get telegram() {
+  get discord() {
     return {
-      botToken: this.config.get<string>('TELEGRAM_BOT_TOKEN', ''),
-      adminChatId: this.config.get<string>('TELEGRAM_ADMIN_CHAT_ID', ''),
+      botToken: this.config.get<string>('DISCORD_BOT_TOKEN', ''),
+      channelId: this.config.get<string>('DISCORD_CHANNEL_ID', ''),
     };
   }
 
