@@ -95,8 +95,14 @@ export class InsightsController {
           ? `<span class="tag" title="${o.enviadoEm ? new Date(o.enviadoEm).toLocaleString('pt-BR') : ''}">✓ enviado</span>`
           : '<span class="muted">—</span>';
 
+        // O titulo abre a pagina real do produto no marketplace (nova aba);
+        // o historico fica num link separado, para as duas coisas nao
+        // competirem pelo mesmo clique.
         return `<tr>
-          <td><a href="/insights/ofertas/${o.id}">${escapeHtml(o.titulo.slice(0, 70))}</a></td>
+          <td>
+            <a href="${escapeHtml(o.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(o.titulo.slice(0, 70))}</a>
+            <a class="hist" href="/insights/ofertas/${o.id}" title="ver série de preços">histórico</a>
+          </td>
           <td class="num">${brl(o.precoAtualCents)}</td>
           <td class="num">${brl(o.minimoCents)}</td>
           <td class="num">${brl(o.maximoCents)}</td>
@@ -143,6 +149,8 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;opacity:.55}
 .ok{color:#16a34a}.muted{opacity:.55}
 .alerta{border:1px solid #f59e0b55;background:#f59e0b12;border-radius:8px;padding:12px 16px;margin-top:16px}
 .tag{font-size:11px;padding:2px 7px;border-radius:99px;background:#16a34a22;color:#16a34a;white-space:nowrap}
+.hist{font-size:11px;opacity:.45;margin-left:8px;text-decoration:none;white-space:nowrap}
+.hist:hover{opacity:.9;text-decoration:underline}
 a{color:inherit}
 </style></head><body>
 <h1>Pipeline Achadinhos</h1>

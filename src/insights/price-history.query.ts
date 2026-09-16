@@ -32,6 +32,8 @@ export interface OfferHistory {
 export interface OfferListItem {
   id: string;
   titulo: string;
+  /** URL do produto no marketplace — para abrir a pagina real da oferta. */
+  url: string;
   precoAtualCents: number;
   minimoCents: number;
   maximoCents: number;
@@ -102,6 +104,7 @@ export class PriceHistoryQuery {
         return {
           id: offer.id,
           titulo: offer.product.title,
+          url: offer.url,
           precoAtualCents: atual,
           minimoCents: minimo,
           maximoCents: maximo,
