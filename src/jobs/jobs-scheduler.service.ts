@@ -45,14 +45,33 @@ export class JobsSchedulerService implements OnModuleInit {
   onModuleInit() {
     const tiers = this.appConfig.pollingTiers;
 
-    for (const queue of [this.collectShopeeQueue, this.collectMercadoLivreQueue]) {
+    // Marketplace em "mock" nao tem o que coletar de verdade: agendar jobs
+    // para ele so gasta requisicao do Redis (que no Upstash e cobrada por
+    // comando) sem produzir nenhum dado util. O Mercado Livre esta em mock
+    // e bloqueado por 403 desde o inicio — manter suas filas girando foi
+    // parte do que esgotou a cota mensal.
+    const collectQueues: Queue[] = [this.collectShopeeQueue];
+    const discoverQueues: Queue[] = [this.discoverShopeeQueue];
+    const active = ['Shopee'];
+
+    if (this.appConfig.mercadoLivre.mode === 'live') {
+      collectQueues.push(this.collectMercadoLivreQueue);
+      discoverQueues.push(this.discoverMercadoLivreQueue);
+      active.push('Mercado Livre');
+    } else {
+      this.logger.warn(
+        'Mercado Livre em modo mock — jobs de coleta/descoberta NAO agendados (economia de requisicoes no Redis).',
+      );
+    }
+
+    for (const queue of collectQueues) {
       this.scheduleInterval(tiers.hot.intervalMin, () => this.enqueueCollect(queue, PollingTier.HOT));
       this.scheduleInterval(tiers.warm.intervalMin, () => this.enqueueCollect(queue, PollingTier.WARM));
       this.scheduleInterval(tiers.cold.intervalMin, () => this.enqueueCollect(queue, PollingTier.COLD));
     }
 
     // Descoberta por keyword roda a cada 6 horas por padrao — nao precisa ser tao frequente quanto o polling.
-    for (const queue of [this.discoverShopeeQueue, this.discoverMercadoLivreQueue]) {
+    for (const queue of discoverQueues) {
       this.scheduleInterval(360, () => this.enqueueDiscover(queue));
     }
 
@@ -61,7 +80,7 @@ export class JobsSchedulerService implements OnModuleInit {
     this.scheduleInterval(60, () => this.enqueueCleanup());
 
     this.logger.log(
-      `Jobs agendados (Shopee + Mercado Livre): collect HOT=${tiers.hot.intervalMin}min WARM=${tiers.warm.intervalMin}min COLD=${tiers.cold.intervalMin}min, discover=360min, aggregate/cleanup=60min`,
+      `Jobs agendados (${active.join(' + ')}): collect HOT=${tiers.hot.intervalMin}min WARM=${tiers.warm.intervalMin}min COLD=${tiers.cold.intervalMin}min, discover=360min, aggregate/cleanup=60min`,
     );
   }
 

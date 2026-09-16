@@ -5,6 +5,7 @@ import { PrismaService } from '@/database/prisma.service';
 import { ProductsService } from '@/products/products.service';
 import { MERCADO_LIVRE_ADAPTER } from '@/marketplaces/mercado-livre/mercado-livre.module';
 import { MarketplaceAdapter } from '@/marketplaces/core/marketplace-adapter.interface';
+import { LOW_COST_WORKER_OPTIONS } from '../worker-options';
 
 export const QUEUE_DISCOVER_MERCADO_LIVRE = 'discover-mercado-livre';
 export const JOB_DISCOVER_KEYWORD = 'discover-keyword';
@@ -15,7 +16,7 @@ export const JOB_DISCOVER_KEYWORD = 'discover-keyword';
  * conhecidas (ver comentario em MercadoLivreLiveAdapter) — pode falhar com
  * 403 dependendo do nivel de acesso da conta.
  */
-@Processor(QUEUE_DISCOVER_MERCADO_LIVRE, { concurrency: 1 })
+@Processor(QUEUE_DISCOVER_MERCADO_LIVRE, { concurrency: 1, ...LOW_COST_WORKER_OPTIONS })
 export class DiscoverMercadoLivreProcessor extends WorkerHost {
   private readonly logger = new Logger(DiscoverMercadoLivreProcessor.name);
 

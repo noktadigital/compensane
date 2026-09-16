@@ -46,6 +46,12 @@ import { JobsSchedulerService } from './jobs-scheduler.service';
         },
       }),
     }),
+    // NOTA: cada fila registrada aqui sobe um worker que faz polling no Redis
+    // 24/7, mesmo sem job nenhum. Com o Upstash cobrando por requisicao, fila
+    // registrada e custo fixo — so registre fila que tem trabalho real.
+    // As filas do Mercado Livre continuam declaradas (o scheduler ainda as
+    // injeta) mas seus PROCESSORS nao sao registrados enquanto o ML estiver
+    // bloqueado: sem worker, a fila nao consome nada ociosa.
     BullModule.registerQueue(
       { name: QUEUE_COLLECT_SHOPEE },
       { name: QUEUE_DISCOVER_SHOPEE },
@@ -67,14 +73,19 @@ import { JobsSchedulerService } from './jobs-scheduler.service';
   providers: [
     CollectShopeeProcessor,
     DiscoverShopeeProcessor,
-    CollectMercadoLivreProcessor,
-    DiscoverMercadoLivreProcessor,
     RecordPricesProcessor,
     AnalyzeDealsProcessor,
     NotifyDiscordProcessor,
     AggregateDailyProcessor,
     CleanupDataProcessor,
     JobsSchedulerService,
+    // Os processors do Mercado Livre so sao registrados quando o ML esta em
+    // modo "live". Em mock eles nao teriam trabalho real, mas cada um subiria
+    // um worker fazendo polling no Redis 24/7 — 2 dos 9 workers que
+    // esgotaram a cota do Upstash sem produzir um unico dado util.
+    ...(process.env.MERCADO_LIVRE_MODE === 'live'
+      ? [CollectMercadoLivreProcessor, DiscoverMercadoLivreProcessor]
+      : []),
   ],
 })
 export class JobsModule {}

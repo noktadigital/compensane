@@ -7,6 +7,7 @@ import { ProductsService } from '@/products/products.service';
 import { SHOPEE_ADAPTER } from '@/marketplaces/shopee/shopee.module';
 import { MarketplaceAdapter } from '@/marketplaces/core/marketplace-adapter.interface';
 import { QUEUE_COLLECT_SHOPEE, QUEUE_RECORD_PRICES, JOB_RECORD_PRICE } from '../jobs.constants';
+import { LOW_COST_WORKER_OPTIONS } from '../worker-options';
 
 interface CollectTierJobData {
   tier: PollingTier;
@@ -26,6 +27,7 @@ interface CollectTierJobData {
  */
 @Processor(QUEUE_COLLECT_SHOPEE, {
   concurrency: 1, // Nunca bombardear a API da Shopee (secao 19) — uma coleta por vez.
+  ...LOW_COST_WORKER_OPTIONS,
 })
 export class CollectShopeeProcessor extends WorkerHost {
   private readonly logger = new Logger(CollectShopeeProcessor.name);

@@ -5,6 +5,7 @@ import { PrismaService } from '@/database/prisma.service';
 import { ProductsService } from '@/products/products.service';
 import { SHOPEE_ADAPTER } from '@/marketplaces/shopee/shopee.module';
 import { MarketplaceAdapter } from '@/marketplaces/core/marketplace-adapter.interface';
+import { LOW_COST_WORKER_OPTIONS } from '../worker-options';
 
 export const QUEUE_DISCOVER_SHOPEE = 'discover-shopee';
 export const JOB_DISCOVER_KEYWORD = 'discover-keyword';
@@ -14,7 +15,7 @@ export const JOB_DISCOVER_KEYWORD = 'discover-keyword';
  * e usa o adapter para buscar novas ofertas, criando Product/ProductOffer
  * (tier WARM por padrao) para itens ainda desconhecidos.
  */
-@Processor(QUEUE_DISCOVER_SHOPEE, { concurrency: 1 })
+@Processor(QUEUE_DISCOVER_SHOPEE, { concurrency: 1, ...LOW_COST_WORKER_OPTIONS })
 export class DiscoverShopeeProcessor extends WorkerHost {
   private readonly logger = new Logger(DiscoverShopeeProcessor.name);
 

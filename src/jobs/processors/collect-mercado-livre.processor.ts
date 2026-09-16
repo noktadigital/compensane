@@ -10,6 +10,7 @@ import {
   QUEUE_RECORD_PRICES,
   JOB_RECORD_PRICE,
 } from '../jobs.constants';
+import { LOW_COST_WORKER_OPTIONS } from '../worker-options';
 
 interface CollectTierJobData {
   tier: PollingTier;
@@ -21,7 +22,7 @@ interface CollectTierJobData {
  * exigido pelo briefing (secao 19: "cada marketplace deve ter seu proprio
  * rate limit").
  */
-@Processor(QUEUE_COLLECT_MERCADO_LIVRE, { concurrency: 1 })
+@Processor(QUEUE_COLLECT_MERCADO_LIVRE, { concurrency: 1, ...LOW_COST_WORKER_OPTIONS })
 export class CollectMercadoLivreProcessor extends WorkerHost {
   private readonly logger = new Logger(CollectMercadoLivreProcessor.name);
 

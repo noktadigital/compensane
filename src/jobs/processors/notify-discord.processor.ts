@@ -5,6 +5,7 @@ import { DealsService } from '@/deals/deals.service';
 import { PrismaService } from '@/database/prisma.service';
 import { DiscordClientService } from '@/discord/discord-client.service';
 import { QUEUE_NOTIFY_DISCORD } from '../jobs.constants';
+import { LOW_COST_WORKER_OPTIONS } from '../worker-options';
 
 interface NotifyDealJobData {
   dealId: string;
@@ -14,7 +15,7 @@ interface NotifyDealJobData {
  * Job notify:discord (secao 19). Envia o card da oferta detectada para o
  * canal do Discord (secao 12), com botoes de aprovar/rejeitar/ver produto.
  */
-@Processor(QUEUE_NOTIFY_DISCORD, { concurrency: 3 })
+@Processor(QUEUE_NOTIFY_DISCORD, { concurrency: 3, ...LOW_COST_WORKER_OPTIONS })
 export class NotifyDiscordProcessor extends WorkerHost {
   private readonly logger = new Logger(NotifyDiscordProcessor.name);
 

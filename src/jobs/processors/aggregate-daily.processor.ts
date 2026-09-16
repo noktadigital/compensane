@@ -3,13 +3,14 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PriceAggregationService } from '@/price-history/price-aggregation.service';
 import { QUEUE_AGGREGATE_DAILY } from '../jobs.constants';
+import { LOW_COST_WORKER_OPTIONS } from '../worker-options';
 
 /**
  * Job aggregate:daily (secao 19). Roda periodicamente (scheduler) para
  * consolidar as observacoes do dia em DailyPriceAggregate, a base para
  * todos os calculos de historico/plateau/confianca.
  */
-@Processor(QUEUE_AGGREGATE_DAILY, { concurrency: 1 })
+@Processor(QUEUE_AGGREGATE_DAILY, { concurrency: 1, ...LOW_COST_WORKER_OPTIONS })
 export class AggregateDailyProcessor extends WorkerHost {
   private readonly logger = new Logger(AggregateDailyProcessor.name);
 

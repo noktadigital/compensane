@@ -4,6 +4,7 @@ import { Job, Queue } from 'bullmq';
 import { RawMarketplaceOffer } from '@/marketplaces/core/marketplace-adapter.interface';
 import { PriceRecordingService } from '@/price-history/price-recording.service';
 import { QUEUE_ANALYZE_DEALS, QUEUE_RECORD_PRICES, JOB_ANALYZE_DEAL } from '../jobs.constants';
+import { LOW_COST_WORKER_OPTIONS } from '../worker-options';
 
 interface RecordPriceJobData {
   productOfferId: string;
@@ -16,7 +17,7 @@ interface RecordPriceJobData {
  * oferta — assim so gastamos ciclos de analise quando o preco de fato
  * mudou, e nao a cada poll.
  */
-@Processor(QUEUE_RECORD_PRICES, { concurrency: 5 })
+@Processor(QUEUE_RECORD_PRICES, { concurrency: 5, ...LOW_COST_WORKER_OPTIONS })
 export class RecordPricesProcessor extends WorkerHost {
   private readonly logger = new Logger(RecordPricesProcessor.name);
 

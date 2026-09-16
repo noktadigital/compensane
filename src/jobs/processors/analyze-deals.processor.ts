@@ -5,6 +5,7 @@ import { DealsService } from '@/deals/deals.service';
 import { AppConfigService } from '@/config/app-config.service';
 import { ProductsService } from '@/products/products.service';
 import { QUEUE_ANALYZE_DEALS, QUEUE_NOTIFY_DISCORD, JOB_NOTIFY_DEAL } from '../jobs.constants';
+import { LOW_COST_WORKER_OPTIONS } from '../worker-options';
 
 interface AnalyzeDealJobData {
   productOfferId: string;
@@ -16,7 +17,7 @@ interface AnalyzeDealJobData {
  * notificacao no Discord. Tambem promove a oferta para o tier HOT
  * quando uma queda relevante e detectada (secao 20).
  */
-@Processor(QUEUE_ANALYZE_DEALS, { concurrency: 5 })
+@Processor(QUEUE_ANALYZE_DEALS, { concurrency: 5, ...LOW_COST_WORKER_OPTIONS })
 export class AnalyzeDealsProcessor extends WorkerHost {
   private readonly logger = new Logger(AnalyzeDealsProcessor.name);
 

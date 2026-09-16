@@ -4,6 +4,7 @@ import { Job } from 'bullmq';
 import { DealStatus } from '@prisma/client';
 import { PrismaService } from '@/database/prisma.service';
 import { QUEUE_CLEANUP_DATA } from '../jobs.constants';
+import { LOW_COST_WORKER_OPTIONS } from '../worker-options';
 
 /**
  * Job cleanup:data (secao 19). Expira deals antigos que ficaram parados em
@@ -12,7 +13,7 @@ import { QUEUE_CLEANUP_DATA } from '../jobs.constants';
  */
 const DEAL_EXPIRATION_HOURS = 48;
 
-@Processor(QUEUE_CLEANUP_DATA, { concurrency: 1 })
+@Processor(QUEUE_CLEANUP_DATA, { concurrency: 1, ...LOW_COST_WORKER_OPTIONS })
 export class CleanupDataProcessor extends WorkerHost {
   private readonly logger = new Logger(CleanupDataProcessor.name);
 
