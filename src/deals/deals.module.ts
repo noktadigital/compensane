@@ -5,6 +5,7 @@ import { PreHikeDetector } from './pre-hike-detector.service';
 import { EvScoringService } from './ev-scoring.service';
 import { DealsService } from './deals.service';
 import { MaturityCriteriaService } from './maturity-criteria.service';
+import { OfferQualityService } from './offer-quality.service';
 
 @Module({
   imports: [PriceHistoryModule],
@@ -13,6 +14,7 @@ import { MaturityCriteriaService } from './maturity-criteria.service';
     PreHikeDetector,
     EvScoringService,
     MaturityCriteriaService,
+    OfferQualityService,
     DealsService,
   ],
   exports: [
@@ -20,6 +22,7 @@ import { MaturityCriteriaService } from './maturity-criteria.service';
     PreHikeDetector,
     EvScoringService,
     MaturityCriteriaService,
+    OfferQualityService,
     DealsService,
   ],
 })

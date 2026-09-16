@@ -42,6 +42,18 @@ export interface SearchOffersParams {
   pageSize?: number;
 }
 
+/** Categoria de ofertas do marketplace (ex: "Home Appliances"). */
+export interface MarketplaceCategory {
+  id: string;
+  name: string;
+}
+
+export interface BrowseCategoryParams {
+  categoryId: string;
+  page?: number;
+  pageSize?: number;
+}
+
 export interface GetOffersByIdsParams {
   externalIds: string[];
 }
@@ -62,6 +74,19 @@ export interface MarketplaceAdapter {
 
   /** Gera (ou recupera) o link de afiliado para uma oferta, quando suportado pela API. */
   generateAffiliateLink(offer: RawMarketplaceOffer): Promise<AffiliateLinkResult>;
+
+  /**
+   * Categorias de oferta do marketplace, quando a API expoe.
+   *
+   * Descoberta por categoria cobre o catalogo inteiro sem depender de
+   * adivinhar palavra-chave — o que evita o problema de "whey protein"
+   * retornar shampoo capilar, ja que a busca textual casa qualquer titulo
+   * que cite o termo.
+   */
+  listCategories?(): Promise<MarketplaceCategory[]>;
+
+  /** Ofertas de uma categoria. So existe quando listCategories existe. */
+  browseCategory?(params: BrowseCategoryParams): Promise<RawMarketplaceOffer[]>;
 }
 
 export const MARKETPLACE_ADAPTER_REGISTRY = 'MARKETPLACE_ADAPTER_REGISTRY';

@@ -86,6 +86,19 @@ export class DealEmbedBuilder {
       embed.addFields({ name: '⭐ Nota', value: data.ratingStar.toFixed(1), inline: true });
     }
 
+    if (data.salesCount != null) {
+      embed.addFields({ name: '📦 Vendas', value: String(data.salesCount), inline: true });
+    }
+
+    // Sinais que nao reprovam a oferta mas quem aprova precisa ver.
+    if (data.alertas?.length) {
+      embed.addFields({
+        name: '👀 Atenção',
+        value: data.alertas.map((a) => `• ${a}`).join('\n'),
+        inline: false,
+      });
+    }
+
     if (data.freeShipping) {
       embed.addFields({ name: '🚚 Frete', value: 'Grátis', inline: true });
     }

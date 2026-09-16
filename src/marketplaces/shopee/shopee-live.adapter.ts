@@ -3,8 +3,10 @@ import { Marketplace } from '@prisma/client';
 import { AppConfigService } from '@/config/app-config.service';
 import {
   AffiliateLinkResult,
+  BrowseCategoryParams,
   GetOffersByIdsParams,
   MarketplaceAdapter,
+  MarketplaceCategory,
   RawMarketplaceOffer,
   SearchOffersParams,
 } from '../core/marketplace-adapter.interface';
@@ -165,6 +167,60 @@ export class ShopeeLiveAdapter implements MarketplaceAdapter {
       productOfferV2: { nodes: Record<string, any>[] };
     }>(query, {
       keyword: params.keyword,
+      page: params.page ?? 1,
+      limit: params.pageSize ?? 50,
+    });
+
+    return (data.productOfferV2?.nodes ?? []).map((node) => this.mapNodeToOffer(node));
+  }
+
+  /**
+   * Categorias de oferta (shopeeOfferV2). Esta query devolve a CATEGORIA em
+   * si — nome, link e comissao-teto — nao os produtos dela. O campo util
+   * aqui e o categoryId, que alimenta browseCategory().
+   */
+  async listCategories(): Promise<MarketplaceCategory[]> {
+    const query = `
+      query ShopeeOfferV2($limit: Int) {
+        shopeeOfferV2(limit: $limit) {
+          nodes { offerName categoryId }
+        }
+      }
+    `;
+
+    // A Shopee recusa limit > 50 com error [11001]. As categorias cabem
+    // folgadamente nesse teto (sao ~30).
+    const data = await this.graphqlRequest<{
+      shopeeOfferV2: { nodes: { offerName: string; categoryId: number | null }[] };
+    }>(query, { limit: 50 });
+
+    return (data.shopeeOfferV2?.nodes ?? [])
+      .filter((n) => n.categoryId != null)
+      .map((n) => ({
+        id: String(n.categoryId),
+        // Os nomes vem prefixados com hifens ("- - Health").
+        name: n.offerName.replace(/^[-\s]+/, '').trim(),
+      }));
+  }
+
+  /**
+   * Produtos de uma categoria. Cobre o catalogo sem depender de adivinhar
+   * palavra-chave — a busca textual casa qualquer titulo que CITE o termo,
+   * o que fazia "whey protein" retornar shampoo capilar.
+   */
+  async browseCategory(params: BrowseCategoryParams): Promise<RawMarketplaceOffer[]> {
+    const query = `
+      query ProductOfferByCategory($cat: Int, $page: Int, $limit: Int) {
+        productOfferV2(productCatId: $cat, page: $page, limit: $limit) {
+          nodes { ${OFFER_NODE_FIELDS} }
+        }
+      }
+    `;
+
+    const data = await this.graphqlRequest<{
+      productOfferV2: { nodes: Record<string, any>[] };
+    }>(query, {
+      cat: Number(params.categoryId),
       page: params.page ?? 1,
       limit: params.pageSize ?? 50,
     });

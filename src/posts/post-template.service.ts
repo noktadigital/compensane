@@ -28,6 +28,10 @@ export interface DealCardData extends PostTemplateData {
   dealScore: number;
   minPrice90dCents?: number | null;
   commissionCents?: number | null;
+  /** Vendas do produto — prova de que o preco e praticado de verdade. */
+  salesCount?: number | null;
+  /** Sinais que nao reprovam a oferta mas quem aprova precisa ver. */
+  alertas?: string[];
   /**
    * Desconto que o proprio marketplace anuncia (0-1). Existe para ser
    * CONFRONTADO com `discountRate` (o desconto real, medido pelo nosso
