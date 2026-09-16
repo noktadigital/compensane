@@ -12,6 +12,7 @@ import { TrackingModule } from './tracking/tracking.module';
 import { DiscordModule } from './discord/discord.module';
 import { JobsModule } from './jobs/jobs.module';
 import { RedirectModule } from './redirect/redirect.module';
+import { InsightsModule } from './insights/insights.module';
 import { HealthModule } from './health/health.module';
 
 @Module({
@@ -29,6 +30,7 @@ import { HealthModule } from './health/health.module';
     DiscordModule,
     JobsModule,
     RedirectModule,
+    InsightsModule,
     HealthModule,
   ],
 })
