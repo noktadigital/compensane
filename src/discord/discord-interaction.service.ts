@@ -71,6 +71,24 @@ export class DiscordInteractionService implements OnApplicationBootstrap {
       return;
     }
 
+    // O link que vai para a audiencia e o encurtado da PROPRIA Shopee, nao o
+    // nosso redirecionador. Um dominio desconhecido colado num grupo de
+    // WhatsApp parece phishing e destroi a confianca — e o s.shopee.com.br
+    // ja e um link de afiliado com subId, entao nada de atribuicao se perde.
+    //
+    // Resolvido ANTES de registrar a decisao: sem link nao ha post, e marcar
+    // o deal como publicado nesse caso deixaria uma aprovacao fantasma que
+    // bloqueia o botao numa segunda tentativa.
+    const finalLink = await this.resolveShortLink(deal);
+
+    if (!finalLink) {
+      await interaction.editReply(
+        'Nao consegui gerar o link encurtado da Shopee agora. Clique em aprovar ' +
+          'de novo em instantes — o post nao sai com link longo de proposito.',
+      );
+      return;
+    }
+
     const decidedBy = `${interaction.user.id}:${interaction.user.username}`;
     await this.trackingService.recordDecision({
       dealId,
@@ -78,34 +96,6 @@ export class DiscordInteractionService implements OnApplicationBootstrap {
       decidedBy,
     });
     await this.dealsService.markPublished(dealId);
-
-    const adapter = this.marketplaceRegistry.get(deal.productOffer.marketplace);
-    const affiliateLink = await adapter.generateAffiliateLink({
-      marketplace: deal.productOffer.marketplace,
-      externalId: deal.productOffer.externalId,
-      title: deal.productOffer.product.title,
-      url: deal.productOffer.url,
-      priceCents: deal.priceCents,
-      inStock: true,
-    });
-
-    const storedLink = await this.prisma.affiliateLink.create({
-      data: {
-        dealId: deal.id,
-        productOfferId: deal.productOffer.id,
-        originalLink: affiliateLink.originalLink,
-        shortLink: affiliateLink.shortLink,
-        subId: affiliateLink.subId,
-      },
-    });
-
-    // O link que vai para a audiencia e o da PROPRIA Shopee, nao o nosso
-    // redirecionador. Um dominio desconhecido colado num grupo de WhatsApp
-    // parece phishing e destroi a confianca — e o s.shopee.com.br ja e um
-    // link de afiliado com subId, entao nada de atribuicao se perde. A
-    // contagem de cliques que o /r/ dava nao vale esse custo; a conversao
-    // que importa e a que aparece no painel da Shopee.
-    const finalLink = storedLink.shortLink ?? storedLink.originalLink;
 
     // O valor riscado do post e o preco "de" da LOJA, nao o nosso preco de
     // referencia: o cliente abre o link e confere os numeros na pagina do
@@ -125,18 +115,72 @@ export class DiscordInteractionService implements OnApplicationBootstrap {
       link: finalLink,
     });
 
-    // wa.me (e nao o deep-link whatsapp://) porque a aprovacao acontece no
-    // desktop, onde o destino e o WhatsApp Web.
-    const whatsappWebUrl = this.postTemplate.buildWhatsappWebShareUrl(whatsappText);
-
     // Bloco de codigo para o texto sair com um botao de copiar nativo do
-    // Discord, sem o markdown ser interpretado.
-    await interaction.editReply(
-      `✅ **Aprovado!**\n\n📋 Post pronto para o WhatsApp:\n\`\`\`\n${whatsappText}\n\`\`\`\n` +
-        `🔗 Abrir no WhatsApp Web: ${whatsappWebUrl}`,
-    );
+    // Discord, sem o markdown ser interpretado. Nada alem disso: o fluxo e
+    // copiar e colar no grupo, e qualquer linha extra so ocupa a tela.
+    await interaction.editReply(`\`\`\`\n${whatsappText}\n\`\`\``);
 
     this.logger.log(`Deal ${dealId} aprovado. Link: ${finalLink}`);
+  }
+
+  /**
+   * O link encurtado da Shopee para este deal — e so ele.
+   *
+   * A descoberta ja gerou e guardou um shortLink quando montou o card, entao
+   * aqui reusamos em vez de chamar generateShortLink de novo: a segunda
+   * chamada gastava cota da API, criava uma linha duplicada em AffiliateLink
+   * e, quando falhava, caia no offerLink longo do catalogo (sem subId) — ou
+   * seja, justamente o link feio e sem atribuicao que nao queremos publicar.
+   *
+   * So gera na hora se nao houver nada guardado. Se nem assim vier um
+   * shortLink, devolve null: melhor o post nao sair do que sair com URL longa.
+   */
+  private async resolveShortLink(
+    deal: NonNullable<Awaited<ReturnType<DealsService['getDealWithOffer']>>>,
+  ): Promise<string | null> {
+    const existente = await this.prisma.affiliateLink.findFirst({
+      where: { dealId: deal.id, shortLink: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      select: { shortLink: true },
+    });
+
+    if (existente?.shortLink) {
+      return existente.shortLink;
+    }
+
+    const adapter = this.marketplaceRegistry.get(deal.productOffer.marketplace);
+
+    try {
+      const gerado = await adapter.generateAffiliateLink({
+        marketplace: deal.productOffer.marketplace,
+        externalId: deal.productOffer.externalId,
+        title: deal.productOffer.product.title,
+        url: deal.productOffer.url,
+        priceCents: deal.priceCents,
+        inStock: true,
+      });
+
+      if (!gerado.shortLink) {
+        return null;
+      }
+
+      await this.prisma.affiliateLink.create({
+        data: {
+          dealId: deal.id,
+          productOfferId: deal.productOffer.id,
+          originalLink: gerado.originalLink,
+          shortLink: gerado.shortLink,
+          subId: gerado.subId,
+        },
+      });
+
+      return gerado.shortLink;
+    } catch (error) {
+      this.logger.error(
+        `Falha ao gerar link encurtado do deal ${deal.id}: ${(error as Error).message}`,
+      );
+      return null;
+    }
   }
 
   /**

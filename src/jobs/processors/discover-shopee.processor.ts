@@ -249,12 +249,26 @@ export class DiscoverShopeeProcessor extends WorkerHost {
       });
 
       const link = await this.shopeeAdapter.generateAffiliateLink(raw);
-      const stored = await this.prisma.affiliateLink.create({
+
+      // Sem link encurtado nao se publica. O fallback do adapter e uma URL
+      // longa de catalogo, sem subId — feia no grupo e sem atribuir a venda.
+      // Melhor a oferta ficar de fora deste ciclo e voltar no proximo.
+      const shortLink = link.shortLink;
+
+      if (!shortLink) {
+        this.logger.warn(
+          `Oferta ${raw.externalId} nao gerou link encurtado — card nao enviado.`,
+        );
+        await this.prisma.deal.delete({ where: { id: deal.id } });
+        return false;
+      }
+
+      await this.prisma.affiliateLink.create({
         data: {
           dealId: deal.id,
           productOfferId: offer.id,
           originalLink: link.originalLink,
-          shortLink: link.shortLink,
+          shortLink,
           subId: link.subId,
         },
       });
@@ -276,7 +290,7 @@ export class DiscoverShopeeProcessor extends WorkerHost {
           // desconhecido num grupo de WhatsApp parece golpe e derruba a
           // confianca da audiencia; o s.shopee.com.br ja e reconhecivel e ja
           // carrega o subId, entao a atribuicao nao se perde.
-          link: stored.shortLink ?? stored.originalLink,
+          link: shortLink,
           ratingStar: raw.ratingStar,
           salesCount: raw.salesCount,
           dealScore: deal.dealScore,
