@@ -21,6 +21,12 @@ import { buildShopeeAuthHeader } from './shopee-signature.util';
  * falso desconto. Guardamos em `raw` para poder confrontar o anunciado
  * contra o nosso historico de precos e flagrar a divergencia.
  */
+/**
+ * sortType=1 = ordenar por vendas. Confirmado por medicao contra a API:
+ * sortType 1 e 2 trazem os mais vendidos, 3/4/5 trazem itens sem venda.
+ */
+const SORT_BY_SALES = 1;
+
 const OFFER_NODE_FIELDS = `
   itemId
   shopId
@@ -179,6 +185,19 @@ export class ShopeeLiveAdapter implements MarketplaceAdapter {
    * si — nome, link e comissao-teto — nao os produtos dela. O campo util
    * aqui e o categoryId, que alimenta browseCategory().
    */
+  /**
+   * Categorias sem volume de vendas no catalogo de afiliados. Medido: a
+   * mediana de vendas da melhor pagina e 103 (Automobiles), 24
+   * (Motorcycles) e 8 (Tickets) — contra milhares nas demais. Era dessas
+   * que vinham "Capacete de Motocross" e "Farol LED Motocicleta".
+   */
+  private static readonly CATEGORIAS_SEM_VOLUME = new Set([
+    'Automobiles',
+    'Motorcycles',
+    'Tickets, Vouchers & Services',
+    'Food Delivery',
+  ]);
+
   async listCategories(): Promise<MarketplaceCategory[]> {
     const query = `
       query ShopeeOfferV2($limit: Int) {
@@ -200,18 +219,27 @@ export class ShopeeLiveAdapter implements MarketplaceAdapter {
         id: String(n.categoryId),
         // Os nomes vem prefixados com hifens ("- - Health").
         name: n.offerName.replace(/^[-\s]+/, '').trim(),
-      }));
+      }))
+      .filter((c) => !ShopeeLiveAdapter.CATEGORIAS_SEM_VOLUME.has(c.name));
   }
 
   /**
    * Produtos de uma categoria. Cobre o catalogo sem depender de adivinhar
    * palavra-chave — a busca textual casa qualquer titulo que CITE o termo,
    * o que fazia "whey protein" retornar shampoo capilar.
+   *
+   * sortType=1 e o que separa catalogo util de entulho. Sem ele a API
+   * devolve o fundo do catalogo: medido em Men Clothes, a MEDIANA de vendas
+   * da pagina era 0 e a media 46. Com sortType=1 a mesma chamada traz
+   * mediana 4047 e topo acima de 20 mil vendas.
+   *
+   * Isso e a diferenca entre receber "Dedeira Moeda Antiga, 23 vendas" e
+   * receber produto que a audiencia de fato compra.
    */
   async browseCategory(params: BrowseCategoryParams): Promise<RawMarketplaceOffer[]> {
     const query = `
-      query ProductOfferByCategory($cat: Int, $page: Int, $limit: Int) {
-        productOfferV2(productCatId: $cat, page: $page, limit: $limit) {
+      query ProductOfferByCategory($cat: Int, $page: Int, $limit: Int, $sort: Int) {
+        productOfferV2(productCatId: $cat, page: $page, limit: $limit, sortType: $sort) {
           nodes { ${OFFER_NODE_FIELDS} }
         }
       }
@@ -223,6 +251,7 @@ export class ShopeeLiveAdapter implements MarketplaceAdapter {
       cat: Number(params.categoryId),
       page: params.page ?? 1,
       limit: params.pageSize ?? 50,
+      sort: params.sortType ?? SORT_BY_SALES,
     });
 
     return (data.productOfferV2?.nodes ?? []).map((node) => this.mapNodeToOffer(node));

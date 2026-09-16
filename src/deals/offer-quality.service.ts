@@ -33,17 +33,32 @@ export interface QualityVerdict {
 @Injectable()
 export class OfferQualityService {
   /** Abaixo disso nao e oferta, e preco normal. */
-  private readonly DESCONTO_MIN = 0.2;
+  private readonly DESCONTO_MIN = 0.25;
   /** Acima disso o preco "de" quase sempre e ficcao. */
   private readonly DESCONTO_SUSPEITO = 0.7;
-  /** Vendas que provam que o preco e praticado de verdade. */
-  private readonly VENDAS_MIN = 10;
+  /**
+   * Vendas que provam que o produto tem demanda real.
+   *
+   * Era 10, e o resultado foi um canal cheio de "Dedeira Moeda Antiga, 23
+   * vendas" e "Botao de Air Fryer Mondial AF33, 21 vendas": itens de nicho
+   * minusculo que ninguem na audiencia vai querer. 10 vendas nao provam
+   * demanda, provam apenas que o produto existe.
+   *
+   * 1000 e sustentavel porque a busca agora ordena por vendas: medido, uma
+   * pagina por categoria rende 992 ofertas acima desse corte. Antes, com a
+   * ordenacao padrao, o catalogo inteiro tinha 12 itens com 300+ vendas.
+   */
+  private readonly VENDAS_MIN = 1000;
   /** Produto ruim barato nao e oferta. */
-  private readonly NOTA_MIN = 4.0;
+  private readonly NOTA_MIN = 4.5;
   /** priceMax ate 1,5x priceMin; acima disso o preco anunciado engana. */
   private readonly FAIXA_MAX = 1.5;
-  /** Abaixo disto nem vale ocupar espaco no banco. */
-  private readonly VENDAS_MIN_MONITORAR = 1;
+  /**
+   * Abaixo disto nem vale ocupar espaco no banco. Mais alto que antes (1)
+   * pelo mesmo motivo: serie de preco de produto sem demanda e lixo que
+   * custa chamada de API no polling.
+   */
+  private readonly VENDAS_MIN_MONITORAR = 100;
 
   avaliar(offer: RawMarketplaceOffer): QualityVerdict {
     const motivos: string[] = [];
@@ -90,7 +105,8 @@ export class OfferQualityService {
       alertas.push(`Desconto alto (${(desconto * 100).toFixed(0)}%) — confira o preço na página`);
     }
 
-    if (vendas >= this.VENDAS_MIN && vendas < 30) {
+    // Passou no corte, mas esta na borda: vale sinalizar sem reprovar.
+    if (vendas >= this.VENDAS_MIN && vendas < this.VENDAS_MIN * 3) {
       alertas.push(`Poucas vendas (${vendas})`);
     }
 

@@ -12,7 +12,7 @@ function oferta(over: Partial<RawMarketplaceOffer> & { priceMin?: number; priceM
     priceCents: 10000,
     inStock: true,
     discountRate: 0.35,
-    salesCount: 50,
+    salesCount: 5000,
     ratingStar: 4.8,
     raw: { priceMin: priceMin ?? 100, priceMax: priceMax ?? 100 },
     ...rest,
@@ -62,9 +62,12 @@ describe('OfferQualityService', () => {
     expect(service.avaliar(oferta({ ratingStar: 0 })).motivos.join()).toMatch(/sem avaliacao/);
   });
 
-  it('nao monitora produto sem nenhuma venda — historico dele e lixo', () => {
+  it('nao monitora produto sem demanda — historico dele e lixo', () => {
+    // Serie de preco de item que ninguem compra custa chamada de API no
+    // polling e nunca vira oferta util.
     expect(service.avaliar(oferta({ salesCount: 0 })).valeMonitorar).toBe(false);
-    expect(service.avaliar(oferta({ salesCount: 1 })).valeMonitorar).toBe(true);
+    expect(service.avaliar(oferta({ salesCount: 23 })).valeMonitorar).toBe(false);
+    expect(service.avaliar(oferta({ salesCount: 500 })).valeMonitorar).toBe(true);
   });
 
   it('alerta sobre desconto alto e poucas vendas sem reprovar', () => {
@@ -72,7 +75,7 @@ describe('OfferQualityService', () => {
     expect(alto.valePublicar).toBe(true);
     expect(alto.alertas.join()).toMatch(/Desconto alto/);
 
-    const poucas = service.avaliar(oferta({ salesCount: 15 }));
+    const poucas = service.avaliar(oferta({ salesCount: 1500 }));
     expect(poucas.valePublicar).toBe(true);
     expect(poucas.alertas.join()).toMatch(/Poucas vendas/);
   });

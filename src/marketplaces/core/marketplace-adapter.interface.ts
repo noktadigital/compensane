@@ -52,6 +52,8 @@ export interface BrowseCategoryParams {
   categoryId: string;
   page?: number;
   pageSize?: number;
+  /** Ordenacao do marketplace. Default do adapter: mais vendidos. */
+  sortType?: number;
 }
 
 export interface GetOffersByIdsParams {
