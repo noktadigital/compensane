@@ -10,6 +10,7 @@ import {
 } from '@/marketplaces/core/marketplace-adapter.interface';
 import { OfferQualityService } from '@/deals/offer-quality.service';
 import { DiscordClientService } from '@/discord/discord-client.service';
+import { PriceReferenceService } from '@/price-history/price-reference.service';
 import { AppConfigService } from '@/config/app-config.service';
 import { LOW_COST_WORKER_OPTIONS } from '../worker-options';
 
@@ -46,6 +47,7 @@ export class DiscoverShopeeProcessor extends WorkerHost {
     private readonly productsService: ProductsService,
     private readonly quality: OfferQualityService,
     private readonly discord: DiscordClientService,
+    private readonly priceReference: PriceReferenceService,
     private readonly appConfig: AppConfigService,
     @Inject(SHOPEE_ADAPTER) private readonly shopeeAdapter: MarketplaceAdapter,
   ) {
@@ -119,6 +121,41 @@ export class DiscoverShopeeProcessor extends WorkerHost {
     return { monitoradas, publicadas };
   }
 
+  /**
+   * Desconto REAL: preco atual contra o preco de referencia do nosso proprio
+   * historico. Retorna null enquanto a serie for curta demais para sustentar
+   * a afirmacao — e melhor nao alegar medicao do que alegar uma fraca.
+   *
+   * Sao necessarios pelo menos 3 dias distintos: com 1 ou 2 pontos, a
+   * referencia tende a ser o proprio preco atual e o resultado seria sempre
+   * ~0%, o que nao informa nada.
+   */
+  private async descontoRealMedido(
+    productOfferId: string,
+    precoAtualCents: number,
+  ): Promise<number | null> {
+    const MIN_DIAS = 3;
+
+    const dias = await this.prisma.dailyPriceAggregate.count({ where: { productOfferId } });
+    if (dias < MIN_DIAS) {
+      return null;
+    }
+
+    const referencia = await this.priceReference.computeReferencePrice(
+      productOfferId,
+      precoAtualCents,
+    );
+
+    if (referencia.method === 'current_price' || referencia.referencePriceCents <= 0) {
+      return null;
+    }
+
+    const desconto =
+      (referencia.referencePriceCents - precoAtualCents) / referencia.referencePriceCents;
+
+    return desconto > 0 ? desconto : 0;
+  }
+
   /** Envia o card de aprovacao com link de afiliado pronto. */
   private async publicar(raw: RawMarketplaceOffer): Promise<boolean> {
     try {
@@ -133,21 +170,39 @@ export class DiscoverShopeeProcessor extends WorkerHost {
         return false;
       }
 
-      // Nao repetir card da mesma oferta enquanto ela ainda estiver em cartaz.
-      const jaEnviada = await this.prisma.deal.findFirst({
-        where: {
-          productOfferId: offer.id,
-          detectedAt: { gte: new Date(Date.now() - 72 * 60 * 60 * 1000) },
-        },
-        select: { id: true },
+      // Nao repetir card da mesma oferta — EXCETO se o preco caiu desde o
+      // ultimo envio. "Ficou mais barato do que quando eu mandei" e
+      // justamente o alerta que vale repetir.
+      const ultimo = await this.prisma.deal.findFirst({
+        where: { productOfferId: offer.id },
+        orderBy: { detectedAt: 'desc' },
+        select: { id: true, priceCents: true, detectedAt: true, status: true },
       });
 
-      if (jaEnviada) {
-        return false;
+      const QUEDA_MINIMA_PARA_REPOSTAR = 0.05;
+      let quedaDesdeUltimoEnvio: number | null = null;
+
+      if (ultimo) {
+        const caiu = (ultimo.priceCents - raw.priceCents) / ultimo.priceCents;
+        const dentroDaJanela =
+          ultimo.detectedAt.getTime() > Date.now() - 72 * 60 * 60 * 1000;
+
+        if (caiu >= QUEDA_MINIMA_PARA_REPOSTAR) {
+          quedaDesdeUltimoEnvio = caiu;
+        } else if (dentroDaJanela) {
+          return false;
+        }
       }
 
       const veredito = this.quality.avaliar(raw);
-      const desconto = raw.discountRate ?? 0;
+      const anunciado = raw.discountRate ?? 0;
+
+      // Desconto REAL medido contra o nosso proprio historico. No dia zero a
+      // serie nao sustenta nada e isto fica null — o card sai so com o
+      // numero da loja. Conforme o historico cresce, este valor passa a
+      // existir e o confronto anunciado vs. real volta a funcionar sozinho.
+      const real = await this.descontoRealMedido(offer.id, raw.priceCents);
+      const desconto = real ?? anunciado;
 
       const deal = await this.prisma.deal.create({
         data: {
@@ -156,14 +211,20 @@ export class DiscoverShopeeProcessor extends WorkerHost {
           // Sem historico proprio ainda: o score reflete o desconto anunciado
           // ja filtrado pelo anti-fraude, nao uma medicao nossa.
           dealScore: Math.min(100, Math.round(desconto * 100)),
-          confidenceScore: 0,
+          confidenceScore: real != null ? 1 : 0,
           priceCents: raw.priceCents,
           referencePriceCents: raw.originalPriceCents ?? raw.priceCents,
           discountRate: desconto,
           commissionCents: raw.commissionCents ?? null,
           freeShipping: raw.freeShipping ?? false,
           preHikeDetected: false,
-          scoreBreakdown: { origem: 'descoberta-por-categoria', alertas: veredito.alertas },
+          scoreBreakdown: {
+            origem: 'descoberta-por-categoria',
+            descontoAnunciado: anunciado,
+            descontoRealMedido: real,
+            quedaDesdeUltimoEnvio,
+            alertas: veredito.alertas,
+          },
         },
       });
 
@@ -184,8 +245,12 @@ export class DiscoverShopeeProcessor extends WorkerHost {
           title: offer.product.title,
           priceCents: raw.priceCents,
           originalPriceCents: raw.originalPriceCents,
-          discountRate: desconto,
-          advertisedDiscountRate: desconto,
+          // Os dois lados do confronto: o que a loja diz e o que medimos.
+          // Quando ainda nao ha historico, `real` e null e o card mostra
+          // apenas o numero da loja, sem alegar medicao que nao existe.
+          discountRate: real ?? anunciado,
+          advertisedDiscountRate: anunciado,
+          precoUltimoEnvioCents: quedaDesdeUltimoEnvio != null ? ultimo?.priceCents : null,
           freeShipping: raw.freeShipping,
           link: `${this.appConfig.appUrl}/r/${stored.id}`,
           ratingStar: raw.ratingStar,

@@ -33,6 +33,12 @@ export interface DealCardData extends PostTemplateData {
   /** Sinais que nao reprovam a oferta mas quem aprova precisa ver. */
   alertas?: string[];
   /**
+   * Preco desta mesma oferta na ultima vez que ela foi enviada ao grupo.
+   * So vem preenchido quando o preco CAIU desde entao — e o caso em que
+   * vale repostar um produto que a audiencia ja viu.
+   */
+  precoUltimoEnvioCents?: number | null;
+  /**
    * Desconto que o proprio marketplace anuncia (0-1). Existe para ser
    * CONFRONTADO com `discountRate` (o desconto real, medido pelo nosso
    * historico) — divergencia grande entre os dois e sinal de falso desconto.

@@ -46,11 +46,34 @@ export class DealEmbedBuilder {
         { name: '🎯 Deal Score', value: `${data.dealScore}/100`, inline: true },
       );
 
+    // "Desconto real" so pode ser chamado assim quando saiu do NOSSO
+    // historico. Sem serie propria, o unico numero disponivel e o da loja —
+    // e rotula-lo como medicao nossa seria mentir para quem aprova.
+    const temMedicaoPropria =
+      data.advertisedDiscountRate != null && data.discountRate !== data.advertisedDiscountRate;
+
     if (data.discountRate && data.discountRate > 0) {
       embed.addFields({
-        name: '📉 Desconto real',
-        value: `${Math.round(data.discountRate * 100)}%`,
+        name: temMedicaoPropria ? '📉 Desconto real (medido)' : '📉 Desconto anunciado',
+        value: temMedicaoPropria
+          ? `${Math.round(data.discountRate * 100)}%`
+          : `${Math.round(data.discountRate * 100)}% — sem histórico próprio ainda`,
         inline: true,
+      });
+    }
+
+    // Repost de produto que a audiencia ja viu: o que justifica repetir e o
+    // preco ter caido desde o ultimo envio.
+    if (data.precoUltimoEnvioCents && data.precoUltimoEnvioCents > data.priceCents) {
+      const queda = Math.round(
+        ((data.precoUltimoEnvioCents - data.priceCents) / data.precoUltimoEnvioCents) * 100,
+      );
+      embed.addFields({
+        name: '🔻 Baixou desde o último envio',
+        value:
+          `Era ${formatBRL(data.precoUltimoEnvioCents)}, agora ${formatBRL(data.priceCents)} ` +
+          `(**${queda}% mais barato**)`,
+        inline: false,
       });
     }
 
