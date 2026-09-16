@@ -11,6 +11,7 @@ import {
 import { OfferQualityService } from '@/deals/offer-quality.service';
 import { DiscordClientService } from '@/discord/discord-client.service';
 import { PriceReferenceService } from '@/price-history/price-reference.service';
+import { PriceRecordingService } from '@/price-history/price-recording.service';
 import { AppConfigService } from '@/config/app-config.service';
 import { LOW_COST_WORKER_OPTIONS } from '../worker-options';
 
@@ -61,6 +62,7 @@ export class DiscoverShopeeProcessor extends WorkerHost {
     private readonly quality: OfferQualityService,
     private readonly discord: DiscordClientService,
     private readonly priceReference: PriceReferenceService,
+    private readonly priceRecording: PriceRecordingService,
     private readonly appConfig: AppConfigService,
     @Inject(SHOPEE_ADAPTER) private readonly shopeeAdapter: MarketplaceAdapter,
   ) {
@@ -106,7 +108,13 @@ export class DiscoverShopeeProcessor extends WorkerHost {
           continue;
         }
 
-        await this.productsService.upsertFromRawOffer(raw);
+        const offer = await this.productsService.upsertFromRawOffer(raw);
+
+        // Grava o preco JUNTO da descoberta. Sem isto a oferta nascia com
+        // lastCollectedAt preenchido mas sem nenhuma observacao — e ficava
+        // invisivel para o carry-forward, que nao tem preco para carregar.
+        // Eram 504 ofertas num unico ciclo presas nesse limbo.
+        await this.priceRecording.recordObservation(offer.id, raw);
         monitoradas++;
 
         if (veredito.valePublicar) {

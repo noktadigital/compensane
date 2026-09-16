@@ -124,20 +124,40 @@ export class PriceAggregationService {
       select: { id: true, marketplace: true },
     });
 
+    const pendentes = collectedToday.filter((o) => !done.has(o.id));
+
+    if (pendentes.length === 0) {
+      return 0;
+    }
+
+    // Busca o ultimo preco de TODAS as ofertas pendentes de uma vez. Uma
+    // consulta por oferta (N+1) levava ~1000 idas ao banco por ciclo e
+    // estourava o pool de conexoes do Supabase.
+    const ultimosPrecos = await this.prisma.$queryRaw<
+      { productOfferId: string; priceCents: number }[]
+    >`
+      SELECT DISTINCT ON ("productOfferId") "productOfferId", "priceCents"
+      FROM "PriceObservation"
+      WHERE "productOfferId" = ANY(${pendentes.map((o) => o.id)}::text[])
+      ORDER BY "productOfferId", "observedAt" DESC
+    `;
+
+    const precoPorOferta = new Map(
+      ultimosPrecos.map((r) => [r.productOfferId, r.priceCents]),
+    );
+
     let count = 0;
+    let semPrecoConhecido = 0;
 
-    for (const offer of collectedToday) {
-      if (done.has(offer.id)) {
-        continue;
-      }
+    for (const offer of pendentes) {
+      const preco = precoPorOferta.get(offer.id);
 
-      const lastObservation = await this.prisma.priceObservation.findFirst({
-        where: { productOfferId: offer.id },
-        orderBy: { observedAt: 'desc' },
-        select: { priceCents: true },
-      });
-
-      if (!lastObservation) {
+      // Oferta marcada como coletada mas sem nenhuma observacao de preco.
+      // Acontece quando a descoberta cria a oferta (gravando lastCollectedAt)
+      // sem passar pelo registro de preco. Nao da para carregar um preco que
+      // nunca foi observado — mas isso precisa aparecer no log, nao sumir.
+      if (preco == null) {
+        semPrecoConhecido++;
         continue;
       }
 
@@ -147,15 +167,22 @@ export class PriceAggregationService {
           productOfferId: offer.id,
           source: offer.marketplace,
           day: dayStart,
-          minPriceCents: lastObservation.priceCents,
-          maxPriceCents: lastObservation.priceCents,
-          closePriceCents: lastObservation.priceCents,
+          minPriceCents: preco,
+          maxPriceCents: preco,
+          closePriceCents: preco,
           observationsCount: 0, // 0 = dia sem observacao nova, preco carregado
         },
         update: {},
       });
 
       count++;
+    }
+
+    if (semPrecoConhecido > 0) {
+      this.logger.warn(
+        `${semPrecoConhecido} ofertas foram marcadas como coletadas mas nunca tiveram ` +
+          'preco observado — ficam de fora do historico ate a proxima coleta registrar um preco.',
+      );
     }
 
     if (count > 0) {
