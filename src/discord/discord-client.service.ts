@@ -52,6 +52,14 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
       this.logger.error(`Erro no cliente do Discord: ${error.message}`);
     });
 
+    // O discord.js aguarda sozinho quando bate no rate limit; logamos para
+    // saber se o ritmo de envio esta encostando no teto do canal.
+    this.client.rest.on('rateLimited', (info) => {
+      this.logger.warn(
+        `Rate limit do Discord: aguardando ${info.timeToReset}ms (rota ${info.route}).`,
+      );
+    });
+
     // Nao bloqueia o boot esperando o Discord responder.
     this.loginWithRetry(botToken, 1).catch((error) => {
       this.logger.error(

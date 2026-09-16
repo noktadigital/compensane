@@ -21,6 +21,19 @@ export const JOB_DISCOVER_KEYWORD = 'discover-keyword';
 const MAX_CARDS_POR_CICLO = 60;
 
 /**
+ * Pausa entre cards.
+ *
+ * O limite do Discord e ~5 mensagens por 5s por canal, e o discord.js ja
+ * aguarda sozinho quando bate no 429 — medido: rajada de 10 levou 8s, com
+ * uma espera automatica de 4,4s na setima. Nao ha risco de ban por isso
+ * (ban vem de abuso persistente de API, nao de mensagens legitimas).
+ *
+ * 1,2s mantem o envio abaixo do teto sem depender do 429, e faz um ciclo
+ * cheio de 60 cards levar ~1min em vez de bloquear no meio.
+ */
+const PAUSA_ENTRE_CARDS_MS = 1200;
+
+/**
  * Descoberta de ofertas (secao 21).
  *
  * Varre as CATEGORIAS do marketplace (nao palavras-chave) e, para cada
@@ -110,6 +123,7 @@ export class DiscoverShopeeProcessor extends WorkerHost {
     for (const raw of selecionadas) {
       if (await this.publicar(raw)) {
         publicadas++;
+        await new Promise((r) => setTimeout(r, PAUSA_ENTRE_CARDS_MS));
       }
     }
 
