@@ -50,7 +50,7 @@ export class DiagnosticsService {
 
   async getPipelineDiagnostics(): Promise<PipelineDiagnostics> {
     const [ofertasAtivas, observacoesTotais, diasAgregados, ultimaObs] = await Promise.all([
-      this.prisma.productOffer.count({ where: { active: true, externalId: { not: { startsWith: 'mock-' } } } }),
+      this.prisma.productOffer.count({ where: { active: true, externalId: { not: { contains: 'mock' } } } }),
       this.prisma.priceObservation.count(),
       this.prisma.dailyPriceAggregate.count(),
       this.prisma.priceObservation.findFirst({
@@ -60,7 +60,7 @@ export class DiagnosticsService {
     ]);
 
     const ofertasSemHistorico = await this.prisma.productOffer.count({
-      where: { active: true, externalId: { not: { startsWith: 'mock-' } }, dailyPriceAggregates: { none: {} } },
+      where: { active: true, externalId: { not: { contains: 'mock' } }, dailyPriceAggregates: { none: {} } },
     });
 
     const [detectados, publicados, expirados] = await Promise.all([
@@ -120,7 +120,7 @@ export class DiagnosticsService {
    */
   private async ofertasQuaseLa(): Promise<PipelineDiagnostics['quaseLa']> {
     const candidatas = await this.prisma.productOffer.findMany({
-      where: { active: true, externalId: { not: { startsWith: 'mock-' } }, dailyPriceAggregates: { some: {} } },
+      where: { active: true, externalId: { not: { contains: 'mock' } }, dailyPriceAggregates: { some: {} } },
       include: {
         product: { select: { title: true } },
         dailyPriceAggregates: { orderBy: { day: 'desc' }, take: 90 },

@@ -75,7 +75,7 @@ export class PriceHistoryQuery {
     const offers = await this.prisma.productOffer.findMany({
       // Exclui ofertas de demonstracao (backfill-demo-history.ts): o historico
       // delas e fabricado e contamina qualquer leitura do painel.
-      where: { active: true, externalId: { not: { startsWith: 'mock-' } } },
+      where: { active: true, externalId: { not: { contains: 'mock' } } },
       include: {
         product: { select: { title: true } },
         dailyPriceAggregates: { orderBy: { day: 'desc' }, take: 90 },
