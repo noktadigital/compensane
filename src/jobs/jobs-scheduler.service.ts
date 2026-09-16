@@ -11,7 +11,15 @@ import {
 } from './jobs.constants';
 import { QUEUE_DISCOVER_SHOPEE, JOB_DISCOVER_KEYWORD } from './processors/discover-shopee.processor';
 
-/** Horarios (hora local do servidor) em que a coleta de precos roda. */
+/**
+ * Fuso usado para decidir os horarios. FIXO em Brasilia, nunca a hora do
+ * servidor: o Render roda em UTC, entao `new Date().getHours()` retornava
+ * 3 horas a mais e a coleta "das 8h" disparava as 5h da manha do usuario —
+ * o horario que ele pediu simplesmente nunca acontecia.
+ */
+const TIMEZONE = 'America/Sao_Paulo';
+
+/** Horarios (horario de Brasilia) em que a coleta de precos roda. */
 const COLLECT_HOURS = [8, 12, 16, 20];
 /** Horario da descoberta de produtos novos e da manutencao diaria. */
 const DISCOVER_HOUR = 7;
@@ -53,8 +61,8 @@ export class JobsSchedulerService implements OnModuleInit, OnModuleDestroy {
     }, MINUTE_MS);
 
     this.logger.log(
-      `Scheduler ativo: coleta as ${COLLECT_HOURS.map((h) => `${h}h`).join(', ')}; ` +
-        `descoberta e manutencao as ${DISCOVER_HOUR}h.`,
+      `Scheduler ativo (horario de Brasilia): coleta as ${COLLECT_HOURS.map((h) => `${h}h`).join(', ')}; ` +
+        `descoberta e manutencao as ${DISCOVER_HOUR}h. Agora sao ${this.agoraEmBrasilia().hora}h em Brasilia.`,
     );
   }
 
@@ -65,9 +73,9 @@ export class JobsSchedulerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async tick(): Promise<void> {
-    const now = new Date();
-    const hour = now.getHours();
-    const slot = `${now.toISOString().slice(0, 10)}:${hour}`;
+    const { dia, hora } = this.agoraEmBrasilia();
+    const hour = hora;
+    const slot = `${dia}:${hora}`;
 
     if (COLLECT_HOURS.includes(hour) && this.claimSlot('collect', slot)) {
       await this.enqueueCollect(PollingTier.HOT);
@@ -90,6 +98,32 @@ export class JobsSchedulerService implements OnModuleInit, OnModuleDestroy {
       await this.expireStaleDeals();
       this.logger.log('Descoberta e manutencao diaria executadas.');
     }
+  }
+
+  /**
+   * Data e hora no fuso de Brasilia, independente do fuso do servidor.
+   * Usa Intl em vez de aritmetica de offset para acompanhar horario de
+   * verao automaticamente, caso volte a existir.
+   */
+  private agoraEmBrasilia(): { dia: string; hora: number } {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      hour12: false,
+    });
+
+    const partes = Object.fromEntries(
+      fmt.formatToParts(new Date()).map((p) => [p.type, p.value]),
+    );
+
+    return {
+      dia: `${partes.year}-${partes.month}-${partes.day}`,
+      // Intl devolve "24" para meia-noite em alguns runtimes.
+      hora: Number(partes.hour) % 24,
+    };
   }
 
   /** Garante que cada horario dispare uma unica vez por dia. */
