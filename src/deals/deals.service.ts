@@ -202,6 +202,18 @@ export class DealsService {
     });
   }
 
+  /**
+   * Marca o deal como recusado. O card some do Discord, mas o registro fica:
+   * e o que impede a mesma oferta de voltar no proximo ciclo e o que permite
+   * medir depois o que costuma ser recusado.
+   */
+  async markRejected(dealId: string): Promise<Deal> {
+    return this.prisma.deal.update({
+      where: { id: dealId },
+      data: { status: DealStatus.REJECTED },
+    });
+  }
+
   async getDealWithOffer(dealId: string) {
     return this.prisma.deal.findUnique({
       where: { id: dealId },

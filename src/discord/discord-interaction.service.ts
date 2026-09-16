@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
-import { ButtonInteraction, Interaction, MessageFlags } from 'discord.js';
+import { ButtonInteraction, Interaction } from 'discord.js';
 import { DecisionType } from '@prisma/client';
 import { DealsService } from '@/deals/deals.service';
 import { TrackingService } from '@/tracking/tracking.service';
@@ -137,6 +137,13 @@ export class DiscordInteractionService implements OnApplicationBootstrap {
     this.logger.log(`Deal ${dealId} aprovado. Link: ${finalLink}`);
   }
 
+  /**
+   * Rejeitar apaga o card do canal, sem deixar mensagem no lugar.
+   *
+   * O canal e uma fila de trabalho, nao um historico: o que foi recusado so
+   * ocupa espaco e atrapalha a leitura do que ainda falta decidir. O registro
+   * da decisao fica no banco (DealDecision), nao no Discord.
+   */
   private async onReject(interaction: ButtonInteraction, dealId: string) {
     const decidedBy = `${interaction.user.id}:${interaction.user.username}`;
     await this.trackingService.recordDecision({
@@ -145,11 +152,20 @@ export class DiscordInteractionService implements OnApplicationBootstrap {
       decidedBy,
     });
 
-    // Efemera: rejeicao nao interessa a mais ninguem, nao precisa poluir o canal.
-    await interaction.reply({
-      content: '❌ Oferta rejeitada.',
-      flags: MessageFlags.Ephemeral,
-    });
+    await this.dealsService.markRejected(dealId);
+
+    try {
+      // deferUpdate reconhece o clique sem postar nada; sem isso o Discord
+      // marca a interacao como falha depois de 3s.
+      await interaction.deferUpdate();
+      await interaction.message.delete();
+    } catch (error) {
+      // Mensagem ja apagada ou sem permissao: a decisao ja foi gravada, entao
+      // isto nao pode virar erro para o usuario.
+      this.logger.warn(
+        `Nao foi possivel apagar o card do deal ${dealId}: ${(error as Error).message}`,
+      );
+    }
 
     this.logger.log(`Deal ${dealId} rejeitado.`);
   }
