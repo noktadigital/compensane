@@ -4,6 +4,7 @@ import { Job, Queue } from 'bullmq';
 import { Marketplace, PollingTier } from '@prisma/client';
 import { PrismaService } from '@/database/prisma.service';
 import { ProductsService } from '@/products/products.service';
+import { AppConfigService } from '@/config/app-config.service';
 import { SHOPEE_ADAPTER } from '@/marketplaces/shopee/shopee.module';
 import { MarketplaceAdapter } from '@/marketplaces/core/marketplace-adapter.interface';
 import { QUEUE_COLLECT_SHOPEE, QUEUE_RECORD_PRICES, JOB_RECORD_PRICE } from '../jobs.constants';
@@ -12,6 +13,13 @@ import { LOW_COST_WORKER_OPTIONS } from '../worker-options';
 interface CollectTierJobData {
   tier: PollingTier;
 }
+
+/**
+ * Teto de ofertas por execucao de coleta. Com ~0,4s por item (a Shopee exige
+ * uma chamada por item) e o tier WARM rodando a cada 2h, 120 itens levam ~50s
+ * — bem dentro da janela, sem empilhar jobs nem estourar o rate limit.
+ */
+const MAX_OFFERS_PER_CYCLE = 120;
 
 /**
  * Job collect:shopee (secao 19). Coleta ofertas de um tier de polling
@@ -35,6 +43,7 @@ export class CollectShopeeProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly productsService: ProductsService,
+    private readonly appConfig: AppConfigService,
     @Inject(SHOPEE_ADAPTER) private readonly shopeeAdapter: MarketplaceAdapter,
     @InjectQueue(QUEUE_RECORD_PRICES) private readonly recordPricesQueue: Queue,
   ) {
@@ -45,7 +54,17 @@ export class CollectShopeeProcessor extends WorkerHost {
     const { tier } = job.data;
     this.logger.log(`Iniciando coleta Shopee para tier ${tier}`);
 
-    const offers = await this.productsService.findActiveOffersByTier(Marketplace.SHOPEE, tier);
+    // Limite por ciclo: cada item e uma chamada HTTP separada (~0,4s), entao
+    // varrer centenas de ofertas de uma vez faz o job durar mais que o proprio
+    // intervalo do tier e empilhar execucoes. findActiveOffersByTier ordena
+    // por lastCollectedAt ascendente, entao as ofertas menos recentes vem
+    // primeiro e o rodizio cobre todo o catalogo ao longo dos ciclos.
+    const batchSize = this.appConfig.pollingTiers[tier === PollingTier.HOT ? 'hot' : 'warm'].size;
+    const offers = await this.productsService.findActiveOffersByTier(
+      Marketplace.SHOPEE,
+      tier,
+      Math.min(batchSize, MAX_OFFERS_PER_CYCLE),
+    );
 
     if (offers.length === 0) {
       this.logger.debug(`Nenhuma oferta ativa no tier ${tier} ainda.`);

@@ -70,9 +70,13 @@ export class JobsSchedulerService implements OnModuleInit {
       this.scheduleInterval(tiers.cold.intervalMin, () => this.enqueueCollect(queue, PollingTier.COLD));
     }
 
-    // Descoberta por keyword roda a cada 6 horas por padrao — nao precisa ser tao frequente quanto o polling.
+    // Descoberta roda a cada 24h. Foi 6h ate perceber que ela engorda o
+    // catalogo (~50 produtos por keyword) muito mais rapido do que a coleta
+    // consegue observar: em 1 hora o catalogo saiu de 22 para 517 ofertas,
+    // e 195 delas ficaram sem nenhuma observacao. Descobrir produto que nunca
+    // sera observado nao constroi historico — so gasta rate limit da Shopee.
     for (const queue of discoverQueues) {
-      this.scheduleInterval(360, () => this.enqueueDiscover(queue));
+      this.scheduleInterval(1440, () => this.enqueueDiscover(queue));
     }
 
     // Agregacao diaria e cleanup rodam a cada hora — idempotentes, seguro repetir.

@@ -70,7 +70,32 @@ export class ShopeeLiveAdapter implements MarketplaceAdapter {
 
   constructor(private readonly appConfig: AppConfigService) {}
 
-  private async graphqlRequest<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+  /**
+   * Espacamento minimo entre chamadas e retry para o rate limit da Shopee.
+   *
+   * A API responde `error [10030]: Rate limit exceeded` quando recebe
+   * chamadas em rajada — e como cada item do polling e uma chamada separada
+   * (nao existe busca por lista de ids), o limite e atingido rapido. Sem
+   * isso, uma rajada derruba o job inteiro e a coleta simplesmente para.
+   */
+  private static readonly MIN_INTERVAL_MS = 250;
+  private static readonly RATE_LIMIT_RETRIES = 3;
+  private static readonly RATE_LIMIT_BACKOFF_MS = 2000;
+  private lastRequestAt = 0;
+
+  private async throttle(): Promise<void> {
+    const elapsed = Date.now() - this.lastRequestAt;
+    if (elapsed < ShopeeLiveAdapter.MIN_INTERVAL_MS) {
+      await new Promise((r) => setTimeout(r, ShopeeLiveAdapter.MIN_INTERVAL_MS - elapsed));
+    }
+    this.lastRequestAt = Date.now();
+  }
+
+  private async graphqlRequest<T>(
+    query: string,
+    variables: Record<string, unknown>,
+    attempt = 1,
+  ): Promise<T> {
     const { appId, appSecret, apiBaseUrl } = this.appConfig.shopee;
 
     if (!appId || !appSecret) {
@@ -78,6 +103,8 @@ export class ShopeeLiveAdapter implements MarketplaceAdapter {
         'SHOPEE_APP_ID/SHOPEE_APP_SECRET nao configurados. Defina SHOPEE_MODE=mock para desenvolvimento local.',
       );
     }
+
+    await this.throttle();
 
     const payload = JSON.stringify({ query, variables });
     const timestamp = Math.floor(Date.now() / 1000);
@@ -98,8 +125,25 @@ export class ShopeeLiveAdapter implements MarketplaceAdapter {
       throw new HttpException(`Shopee API error: ${response.status}`, response.status);
     }
 
-    const json = (await response.json()) as { data?: T; errors?: unknown[] };
+    const json = (await response.json()) as {
+      data?: T;
+      errors?: { extensions?: { code?: number } }[];
+    };
+
     if (json.errors && json.errors.length > 0) {
+      const isRateLimit = json.errors.some((e) => e?.extensions?.code === 10030);
+
+      // Rate limit e transitorio: espera e tenta de novo em vez de derrubar o
+      // job. Sem isso, uma rajada some com a coleta inteira do ciclo.
+      if (isRateLimit && attempt <= ShopeeLiveAdapter.RATE_LIMIT_RETRIES) {
+        const delay = ShopeeLiveAdapter.RATE_LIMIT_BACKOFF_MS * attempt;
+        this.logger.warn(
+          `Rate limit da Shopee (tentativa ${attempt}/${ShopeeLiveAdapter.RATE_LIMIT_RETRIES}). Aguardando ${delay}ms.`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+        return this.graphqlRequest<T>(query, variables, attempt + 1);
+      }
+
       this.logger.error(`Shopee API GraphQL errors: ${JSON.stringify(json.errors)}`);
       throw new Error('Shopee API retornou erros GraphQL');
     }

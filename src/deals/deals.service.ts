@@ -8,6 +8,7 @@ import { ConfidenceScoreService } from '@/price-history/confidence-score.service
 import { DealScoringService } from './deal-scoring.service';
 import { PreHikeDetector } from './pre-hike-detector.service';
 import { EvScoringService } from './ev-scoring.service';
+import { MaturityCriteriaService } from './maturity-criteria.service';
 
 /**
  * Janela de silencio por oferta. Dentro dela, a mesma oferta so gera um novo
@@ -39,6 +40,7 @@ export class DealsService {
     private readonly dealScoring: DealScoringService,
     private readonly preHikeDetector: PreHikeDetector,
     private readonly evScoring: EvScoringService,
+    private readonly maturityCriteria: MaturityCriteriaService,
   ) {}
 
   async analyzeOffer(productOfferId: string): Promise<DealAnalysisResult> {
@@ -102,16 +104,23 @@ export class DealsService {
       confidenceScore: confidence,
     });
 
-    if (scoreResult.discountRate < this.appConfig.dealRules.minRealDiscount) {
+    // Criterio PROGRESSIVO: quanto menos historico, maior o desconto exigido
+    // (para nao confundir ruido com oferta) e menor a confianca cobrada (que e
+    // estruturalmente baixa no inicio). Sem isso o sistema fica impossivel de
+    // satisfazer no dia zero — com 1 ponto de historico o desconto real e
+    // sempre 0% — e sem ofertas chegando nunca se constroi historico.
+    const criteria = this.maturityCriteria.resolve(historySummary.distinctDaysWithData);
+
+    if (scoreResult.discountRate < criteria.minRealDiscount) {
       reasons.push(
-        `desconto real (${(scoreResult.discountRate * 100).toFixed(1)}%) abaixo do minimo configurado`,
+        `desconto real (${(scoreResult.discountRate * 100).toFixed(1)}%) abaixo do minimo de ${(criteria.minRealDiscount * 100).toFixed(0)}% exigido na fase "${criteria.stage}" (${criteria.daysWithData}d de historico)`,
       );
     }
 
-    // Confianca muito baixa: nao publicar mesmo que o score bruto pareça bom.
-    const MIN_CONFIDENCE = 0.35;
-    if (confidence < MIN_CONFIDENCE) {
-      reasons.push(`confianca insuficiente (${confidence}) — historico curto demais`);
+    if (confidence < criteria.minConfidence) {
+      reasons.push(
+        `confianca ${confidence} abaixo do minimo ${criteria.minConfidence} da fase "${criteria.stage}"`,
+      );
     }
 
     // Anti-repeticao: sem isto, o tier HOT (a cada 15min) geraria um card novo
