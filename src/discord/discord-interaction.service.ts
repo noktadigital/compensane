@@ -5,7 +5,6 @@ import { DealsService } from '@/deals/deals.service';
 import { TrackingService } from '@/tracking/tracking.service';
 import { PostTemplateService } from '@/posts/post-template.service';
 import { MarketplaceAdapterRegistry } from '@/marketplaces/core/marketplace-adapter.registry';
-import { AppConfigService } from '@/config/app-config.service';
 import { PrismaService } from '@/database/prisma.service';
 import { DiscordClientService } from './discord-client.service';
 
@@ -24,7 +23,6 @@ export class DiscordInteractionService implements OnApplicationBootstrap {
     private readonly trackingService: TrackingService,
     private readonly postTemplate: PostTemplateService,
     private readonly marketplaceRegistry: MarketplaceAdapterRegistry,
-    private readonly appConfig: AppConfigService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -101,9 +99,13 @@ export class DiscordInteractionService implements OnApplicationBootstrap {
       },
     });
 
-    // Usa o redirecionador proprio /r/{slug} (secao 15) em vez do link direto:
-    // registra clique e serve preview de Open Graph correto para anuncios pagos.
-    const finalLink = `${this.appConfig.appUrl}/r/${storedLink.id}`;
+    // O link que vai para a audiencia e o da PROPRIA Shopee, nao o nosso
+    // redirecionador. Um dominio desconhecido colado num grupo de WhatsApp
+    // parece phishing e destroi a confianca — e o s.shopee.com.br ja e um
+    // link de afiliado com subId, entao nada de atribuicao se perde. A
+    // contagem de cliques que o /r/ dava nao vale esse custo; a conversao
+    // que importa e a que aparece no painel da Shopee.
+    const finalLink = storedLink.shortLink ?? storedLink.originalLink;
 
     // O valor riscado do post e o preco "de" da LOJA, nao o nosso preco de
     // referencia: o cliente abre o link e confere os numeros na pagina do

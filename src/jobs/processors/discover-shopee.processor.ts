@@ -12,7 +12,6 @@ import { OfferQualityService } from '@/deals/offer-quality.service';
 import { DiscordClientService } from '@/discord/discord-client.service';
 import { PriceReferenceService } from '@/price-history/price-reference.service';
 import { PriceRecordingService } from '@/price-history/price-recording.service';
-import { AppConfigService } from '@/config/app-config.service';
 import { LOW_COST_WORKER_OPTIONS } from '../worker-options';
 
 export const QUEUE_DISCOVER_SHOPEE = 'discover-shopee';
@@ -63,7 +62,6 @@ export class DiscoverShopeeProcessor extends WorkerHost {
     private readonly discord: DiscordClientService,
     private readonly priceReference: PriceReferenceService,
     private readonly priceRecording: PriceRecordingService,
-    private readonly appConfig: AppConfigService,
     @Inject(SHOPEE_ADAPTER) private readonly shopeeAdapter: MarketplaceAdapter,
   ) {
     super();
@@ -274,7 +272,11 @@ export class DiscoverShopeeProcessor extends WorkerHost {
           advertisedDiscountRate: anunciado,
           precoUltimoEnvioCents: quedaDesdeUltimoEnvio != null ? ultimo?.priceCents : null,
           freeShipping: raw.freeShipping,
-          link: `${this.appConfig.appUrl}/r/${stored.id}`,
+          // Link da propria Shopee, nao o nosso redirecionador. Um dominio
+          // desconhecido num grupo de WhatsApp parece golpe e derruba a
+          // confianca da audiencia; o s.shopee.com.br ja e reconhecivel e ja
+          // carrega o subId, entao a atribuicao nao se perde.
+          link: stored.shortLink ?? stored.originalLink,
           ratingStar: raw.ratingStar,
           salesCount: raw.salesCount,
           dealScore: deal.dealScore,
