@@ -1,138 +1,134 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { PollingTier } from '@prisma/client';
-import { AppConfigService } from '@/config/app-config.service';
+import { DealStatus, PollingTier } from '@prisma/client';
+import { PrismaService } from '@/database/prisma.service';
 import {
   QUEUE_COLLECT_SHOPEE,
-  QUEUE_COLLECT_MERCADO_LIVRE,
   QUEUE_AGGREGATE_DAILY,
-  QUEUE_CLEANUP_DATA,
   JOB_COLLECT_TIER,
   JOB_AGGREGATE_DAILY,
-  JOB_CLEANUP,
 } from './jobs.constants';
 import { QUEUE_DISCOVER_SHOPEE, JOB_DISCOVER_KEYWORD } from './processors/discover-shopee.processor';
-import { QUEUE_DISCOVER_MERCADO_LIVRE } from './processors/discover-mercado-livre.processor';
+
+/** Horarios (hora local do servidor) em que a coleta de precos roda. */
+const COLLECT_HOURS = [8, 12, 16, 20];
+/** Horario da descoberta de produtos novos e da manutencao diaria. */
+const DISCOVER_HOUR = 7;
+/** Deals sem decisao humana expiram depois disto. */
+const DEAL_EXPIRATION_HOURS = 48;
 
 const MINUTE_MS = 60_000;
 
 /**
- * Agenda os jobs recorrentes (secao 19/20) usando setInterval com os
- * intervalos configurados (nunca hardcoded — vem de AppConfigService/.env).
- * Os tiers HOT/WARM/COLD cada um roda no seu proprio intervalo, respeitando
- * o rate limit de cada marketplace (concurrency=1 nos processors de coleta).
+ * Agenda o trabalho recorrente em HORARIOS FIXOS (8h, 12h, 16h, 20h) em vez
+ * de intervalos corridos.
  *
- * Os mesmos intervalos de tier sao compartilhados entre marketplaces por
- * simplicidade na V1 — se um marketplace precisar de cadencia propria no
- * futuro, adicionar configuracao especifica em vez de reusar pollingTiers.
+ * Por que horario fixo: intervalo corrido (a cada 15min) fazia ~96 ciclos de
+ * coleta por dia para um catalogo cujo preco muda poucas vezes ao dia —
+ * gastando rate limit da Shopee e requisicoes do Redis sem produzir dado
+ * novo. Quatro coletas diarias cobrem a variacao real de preco e deixam o
+ * historico crescer de forma previsivel.
+ *
+ * O relogio e conferido a cada minuto; o trabalho so dispara quando a hora
+ * cheia bate e ainda nao rodou naquele horario.
  */
 @Injectable()
-export class JobsSchedulerService implements OnModuleInit {
+export class JobsSchedulerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(JobsSchedulerService.name);
-  private readonly timers: NodeJS.Timeout[] = [];
+  private timer?: NodeJS.Timeout;
+  /** Ultima execucao por marcador "YYYY-MM-DD:HH", para nao repetir na mesma hora. */
+  private readonly lastRun = new Map<string, string>();
 
   constructor(
-    private readonly appConfig: AppConfigService,
-    @InjectQueue(QUEUE_COLLECT_SHOPEE) private readonly collectShopeeQueue: Queue,
-    @InjectQueue(QUEUE_DISCOVER_SHOPEE) private readonly discoverShopeeQueue: Queue,
-    @InjectQueue(QUEUE_COLLECT_MERCADO_LIVRE) private readonly collectMercadoLivreQueue: Queue,
-    @InjectQueue(QUEUE_DISCOVER_MERCADO_LIVRE) private readonly discoverMercadoLivreQueue: Queue,
+    private readonly prisma: PrismaService,
+    @InjectQueue(QUEUE_COLLECT_SHOPEE) private readonly collectQueue: Queue,
+    @InjectQueue(QUEUE_DISCOVER_SHOPEE) private readonly discoverQueue: Queue,
     @InjectQueue(QUEUE_AGGREGATE_DAILY) private readonly aggregateQueue: Queue,
-    @InjectQueue(QUEUE_CLEANUP_DATA) private readonly cleanupQueue: Queue,
   ) {}
 
   onModuleInit() {
-    const tiers = this.appConfig.pollingTiers;
-
-    // Marketplace em "mock" nao tem o que coletar de verdade: agendar jobs
-    // para ele so gasta requisicao do Redis (que no Upstash e cobrada por
-    // comando) sem produzir nenhum dado util. O Mercado Livre esta em mock
-    // e bloqueado por 403 desde o inicio — manter suas filas girando foi
-    // parte do que esgotou a cota mensal.
-    const collectQueues: Queue[] = [this.collectShopeeQueue];
-    const discoverQueues: Queue[] = [this.discoverShopeeQueue];
-    const active = ['Shopee'];
-
-    if (this.appConfig.mercadoLivre.mode === 'live') {
-      collectQueues.push(this.collectMercadoLivreQueue);
-      discoverQueues.push(this.discoverMercadoLivreQueue);
-      active.push('Mercado Livre');
-    } else {
-      this.logger.warn(
-        'Mercado Livre em modo mock — jobs de coleta/descoberta NAO agendados (economia de requisicoes no Redis).',
-      );
-    }
-
-    for (const queue of collectQueues) {
-      this.scheduleInterval(tiers.hot.intervalMin, () => this.enqueueCollect(queue, PollingTier.HOT));
-      this.scheduleInterval(tiers.warm.intervalMin, () => this.enqueueCollect(queue, PollingTier.WARM));
-      this.scheduleInterval(tiers.cold.intervalMin, () => this.enqueueCollect(queue, PollingTier.COLD));
-    }
-
-    // Descoberta roda a cada 24h. Foi 6h ate perceber que ela engorda o
-    // catalogo (~50 produtos por keyword) muito mais rapido do que a coleta
-    // consegue observar: em 1 hora o catalogo saiu de 22 para 517 ofertas,
-    // e 195 delas ficaram sem nenhuma observacao. Descobrir produto que nunca
-    // sera observado nao constroi historico — so gasta rate limit da Shopee.
-    for (const queue of discoverQueues) {
-      this.scheduleInterval(1440, () => this.enqueueDiscover(queue));
-    }
-
-    // Agregacao diaria e cleanup rodam a cada hora — idempotentes, seguro repetir.
-    this.scheduleInterval(60, () => this.enqueueAggregate());
-    this.scheduleInterval(60, () => this.enqueueCleanup());
+    this.timer = setInterval(() => {
+      this.tick().catch((error) => this.logger.error('Falha no scheduler', error as Error));
+    }, MINUTE_MS);
 
     this.logger.log(
-      `Jobs agendados (${active.join(' + ')}): collect HOT=${tiers.hot.intervalMin}min WARM=${tiers.warm.intervalMin}min COLD=${tiers.cold.intervalMin}min, discover=360min, aggregate/cleanup=60min`,
+      `Scheduler ativo: coleta as ${COLLECT_HOURS.map((h) => `${h}h`).join(', ')}; ` +
+        `descoberta e manutencao as ${DISCOVER_HOUR}h.`,
     );
   }
 
-  private scheduleInterval(intervalMinutes: number, callback: () => void) {
-    callback(); // dispara uma vez no boot para nao esperar o primeiro intervalo.
-    const timer = setInterval(callback, intervalMinutes * MINUTE_MS);
-    this.timers.push(timer);
+  onModuleDestroy() {
+    if (this.timer) {
+      clearInterval(this.timer);
+    }
   }
 
-  private async enqueueCollect(queue: Queue, tier: PollingTier) {
-    await queue.add(
+  private async tick(): Promise<void> {
+    const now = new Date();
+    const hour = now.getHours();
+    const slot = `${now.toISOString().slice(0, 10)}:${hour}`;
+
+    if (COLLECT_HOURS.includes(hour) && this.claimSlot('collect', slot)) {
+      await this.enqueueCollect(PollingTier.HOT);
+      await this.enqueueCollect(PollingTier.WARM);
+      await this.aggregateQueue.add(
+        JOB_AGGREGATE_DAILY,
+        {},
+        { removeOnComplete: 5, removeOnFail: 10, attempts: 2 },
+      );
+      this.logger.log(`Coleta das ${hour}h enfileirada.`);
+    }
+
+    if (hour === DISCOVER_HOUR && this.claimSlot('discover', slot)) {
+      await this.discoverQueue.add(
+        JOB_DISCOVER_KEYWORD,
+        {},
+        { removeOnComplete: 5, removeOnFail: 10, attempts: 2 },
+      );
+      // Manutencao diaria: query unica, nao precisa de fila propria.
+      await this.expireStaleDeals();
+      this.logger.log('Descoberta e manutencao diaria executadas.');
+    }
+  }
+
+  /** Garante que cada horario dispare uma unica vez por dia. */
+  private claimSlot(kind: string, slot: string): boolean {
+    if (this.lastRun.get(kind) === slot) {
+      return false;
+    }
+    this.lastRun.set(kind, slot);
+    return true;
+  }
+
+  private async enqueueCollect(tier: PollingTier): Promise<void> {
+    await this.collectQueue.add(
       JOB_COLLECT_TIER,
       { tier },
       {
-        removeOnComplete: 50,
-        removeOnFail: 100,
+        removeOnComplete: 10,
+        removeOnFail: 20,
         attempts: 3,
         backoff: { type: 'exponential', delay: 5000 },
       },
     );
   }
 
-  private async enqueueDiscover(queue: Queue) {
-    await queue.add(
-      JOB_DISCOVER_KEYWORD,
-      {},
-      {
-        removeOnComplete: 20,
-        removeOnFail: 50,
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
-      },
-    );
-  }
+  /**
+   * Expira deals que ficaram sem decisao humana. So DETECTED expira: um deal
+   * PUBLISHED ja foi aprovado por uma pessoa, entao nao ha o que expirar —
+   * marcar aprovado como expirado apagava o registro do que foi publicado.
+   */
+  private async expireStaleDeals(): Promise<void> {
+    const cutoff = new Date(Date.now() - DEAL_EXPIRATION_HOURS * 60 * 60 * 1000);
 
-  private async enqueueAggregate() {
-    await this.aggregateQueue.add(
-      JOB_AGGREGATE_DAILY,
-      {},
-      { removeOnComplete: 10, removeOnFail: 20, attempts: 2 },
-    );
-  }
+    const result = await this.prisma.deal.updateMany({
+      where: { status: DealStatus.DETECTED, detectedAt: { lt: cutoff } },
+      data: { status: DealStatus.EXPIRED },
+    });
 
-  private async enqueueCleanup() {
-    await this.cleanupQueue.add(
-      JOB_CLEANUP,
-      {},
-      { removeOnComplete: 10, removeOnFail: 20, attempts: 2 },
-    );
+    if (result.count > 0) {
+      this.logger.log(`${result.count} deals sem decisao expirados.`);
+    }
   }
 }
