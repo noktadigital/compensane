@@ -39,6 +39,12 @@ export class InsightsController {
     return this.history.listOffers();
   }
 
+  /** Tudo que ja foi aprovado e foi para o grupo — evita repetir post. */
+  @Get('publicados')
+  async publicados() {
+    return this.history.listPublished();
+  }
+
   @Get('ofertas/:id')
   async oferta(@Param('id') id: string) {
     const historico = await this.history.getOfferHistory(id);
@@ -51,18 +57,20 @@ export class InsightsController {
   /** Painel HTML — a mesma informacao, legivel sem ferramenta. */
   @Get()
   async painel(@Res() res: Response) {
-    const [diag, ofertas] = await Promise.all([
+    const [diag, ofertas, publicados] = await Promise.all([
       this.diagnostics.getPipelineDiagnostics(),
       this.history.listOffers(50),
+      this.history.listPublished(50),
     ]);
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.send(this.renderPainel(diag, ofertas));
+    return res.send(this.renderPainel(diag, ofertas, publicados));
   }
 
   private renderPainel(
     diag: Awaited<ReturnType<DiagnosticsService['getPipelineDiagnostics']>>,
     ofertas: Awaited<ReturnType<PriceHistoryQuery['listOffers']>>,
+    publicados: Awaited<ReturnType<PriceHistoryQuery['listPublished']>>,
   ): string {
     const ultimaColeta = diag.coleta.ultimaColeta
       ? new Date(diag.coleta.ultimaColeta).toLocaleString('pt-BR')
@@ -82,14 +90,31 @@ export class InsightsController {
       .join('');
 
     const linhasOfertas = ofertas
-      .map(
-        (o) => `<tr>
+      .map((o) => {
+        const enviado = o.jaEnviado
+          ? `<span class="tag" title="${o.enviadoEm ? new Date(o.enviadoEm).toLocaleString('pt-BR') : ''}">✓ enviado</span>`
+          : '<span class="muted">—</span>';
+
+        return `<tr>
           <td><a href="/insights/ofertas/${o.id}">${escapeHtml(o.titulo.slice(0, 70))}</a></td>
           <td class="num">${brl(o.precoAtualCents)}</td>
           <td class="num">${brl(o.minimoCents)}</td>
           <td class="num">${brl(o.maximoCents)}</td>
           <td class="num">${o.diasHistorico}d</td>
           <td class="num ${o.descontoReal > 0 ? 'ok' : 'muted'}">${(o.descontoReal * 100).toFixed(1)}%</td>
+          <td>${enviado}</td>
+        </tr>`;
+      })
+      .join('');
+
+    const linhasPublicados = publicados
+      .map(
+        (p) => `<tr>
+          <td>${escapeHtml(p.titulo.slice(0, 65))}</td>
+          <td class="num">${brl(p.precoCents)}</td>
+          <td class="num">${p.diasAtras === 0 ? 'hoje' : `${p.diasAtras}d atrás`}</td>
+          <td class="num">${p.cliques}</td>
+          <td>${p.link ? `<a href="${escapeHtml(p.link)}">abrir</a>` : '<span class="muted">sem link</span>'}</td>
         </tr>`,
       )
       .join('');
@@ -117,6 +142,7 @@ th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;opacity:.55}
 .num{text-align:right;font-variant-numeric:tabular-nums}
 .ok{color:#16a34a}.muted{opacity:.55}
 .alerta{border:1px solid #f59e0b55;background:#f59e0b12;border-radius:8px;padding:12px 16px;margin-top:16px}
+.tag{font-size:11px;padding:2px 7px;border-radius:99px;background:#16a34a22;color:#16a34a;white-space:nowrap}
 a{color:inherit}
 </style></head><body>
 <h1>Pipeline Achadinhos</h1>
@@ -147,11 +173,17 @@ ${
 <th class="num">Real / Exigido</th><th class="num">Histórico</th><th>Falta</th>
 </tr></thead><tbody>${linhasQuaseLa || '<tr><td colspan="6" class="muted">sem dados</td></tr>'}</tbody></table>
 
+<h2>Já enviados ao grupo (${publicados.length})</h2>
+<table><thead><tr>
+<th>Produto</th><th class="num">Preço</th><th class="num">Quando</th>
+<th class="num">Cliques</th><th>Link</th>
+</tr></thead><tbody>${linhasPublicados || '<tr><td colspan="5" class="muted">nada publicado ainda</td></tr>'}</tbody></table>
+
 <h2>Ofertas monitoradas</h2>
 <table><thead><tr>
 <th>Produto</th><th class="num">Atual</th><th class="num">Mín</th>
-<th class="num">Máx</th><th class="num">Histórico</th><th class="num">Desconto</th>
-</tr></thead><tbody>${linhasOfertas || '<tr><td colspan="6" class="muted">sem dados</td></tr>'}</tbody></table>
+<th class="num">Máx</th><th class="num">Histórico</th><th class="num">Desconto</th><th>Enviado?</th>
+</tr></thead><tbody>${linhasOfertas || '<tr><td colspan="7" class="muted">sem dados</td></tr>'}</tbody></table>
 </body></html>`;
   }
 }

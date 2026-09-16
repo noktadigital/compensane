@@ -139,8 +139,6 @@ Os intervalos de cada tier de polling (`POLLING_HOT_INTERVAL_MIN` etc.) são con
 
 `scripts/dev/` contém utilitários fora do pipeline de produção, úteis para testar o sistema manualmente:
 
-- `backfill-demo-history.ts` — popula 90 dias de histórico simulado (plateau em torno de R$199) para a oferta mock `mock-whey-dark-lab-1`, permitindo testar o Deal Score com confiança alta sem esperar dias reais de coleta.
-- `trigger-analyze.ts` — dispara a análise de deal manualmente para essa oferta e envia o card ao Discord, sem esperar o próximo ciclo do scheduler.
 - `inspect-offer.ts` — mostra o estado atual (últimas observações, contagem de agregações) de uma oferta no banco.
 - `test-discord.ts` — envia dois cards de teste ao canal (uma oferta honesta e uma com desconto inflado), validando token, permissões e a renderização do embed.
 - `diagnose-discord.ts` — lista os servidores e canais que o bot enxerga, com IDs e permissões. Use quando o envio falhar com `Unknown Channel`.
