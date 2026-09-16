@@ -6,6 +6,7 @@ import { PostsModule } from '@/posts/posts.module';
 import { DiscordClientService } from './discord-client.service';
 import { DiscordInteractionService } from './discord-interaction.service';
 import { DealEmbedBuilder } from './deal-embed.builder';
+import { PostChannelService } from './post-channel.service';
 import { TrackingMetricsFormatter } from './tracking-metrics.formatter';
 
 @Module({
@@ -14,6 +15,7 @@ import { TrackingMetricsFormatter } from './tracking-metrics.formatter';
     DiscordClientService,
     DiscordInteractionService,
     DealEmbedBuilder,
+    PostChannelService,
     TrackingMetricsFormatter,
   ],
   exports: [DiscordClientService],

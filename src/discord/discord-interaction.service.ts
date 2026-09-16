@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
-import { ButtonInteraction, Interaction } from 'discord.js';
+import { ButtonInteraction, ChannelType, Interaction, MessageFlags } from 'discord.js';
 import { DecisionType } from '@prisma/client';
 import { DealsService } from '@/deals/deals.service';
 import { TrackingService } from '@/tracking/tracking.service';
@@ -7,6 +7,7 @@ import { PostTemplateService } from '@/posts/post-template.service';
 import { MarketplaceAdapterRegistry } from '@/marketplaces/core/marketplace-adapter.registry';
 import { PrismaService } from '@/database/prisma.service';
 import { DiscordClientService } from './discord-client.service';
+import { PostChannelService } from './post-channel.service';
 
 /**
  * Handlers de interacao (secao 12): aprovar/rejeitar ofertas. A geracao do
@@ -24,6 +25,7 @@ export class DiscordInteractionService implements OnApplicationBootstrap {
     private readonly postTemplate: PostTemplateService,
     private readonly marketplaceRegistry: MarketplaceAdapterRegistry,
     private readonly prisma: PrismaService,
+    private readonly postChannels: PostChannelService,
   ) {}
 
   onApplicationBootstrap() {
@@ -46,7 +48,16 @@ export class DiscordInteractionService implements OnApplicationBootstrap {
   private async handleButton(interaction: ButtonInteraction) {
     const [scope, action, dealId] = interaction.customId.split(':');
 
-    if (scope !== 'deal' || !dealId) {
+    if (!dealId) {
+      return;
+    }
+
+    if (scope === 'post' && action === 'close') {
+      await this.onClosePost(interaction, dealId);
+      return;
+    }
+
+    if (scope !== 'deal') {
       return;
     }
 
@@ -63,7 +74,11 @@ export class DiscordInteractionService implements OnApplicationBootstrap {
   private async onApprove(interaction: ButtonInteraction, dealId: string) {
     // Gerar link de afiliado passa por chamada externa e pode demorar mais
     // que os 3s de limite do Discord para responder uma interacao.
-    await interaction.deferReply();
+    //
+    // Efemera: no caminho feliz o post vai para o canal proprio e esta
+    // resposta e descartada. Publica, ela apareceria e sumiria no meio da
+    // fila de cards — exatamente a poluicao visual que se quer evitar.
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const deal = await this.dealsService.getDealWithOffer(dealId);
     if (!deal) {
@@ -115,12 +130,65 @@ export class DiscordInteractionService implements OnApplicationBootstrap {
       link: finalLink,
     });
 
-    // Bloco de codigo para o texto sair com um botao de copiar nativo do
-    // Discord, sem o markdown ser interpretado. Nada alem disso: o fluxo e
-    // copiar e colar no grupo, e qualquer linha extra so ocupa a tela.
-    await interaction.editReply(`\`\`\`\n${whatsappText}\n\`\`\``);
+    // O post vai para um canal proprio na barra lateral, nao para o meio da
+    // fila de cards: o fluxo e aprovar varias ofertas em sequencia e so
+    // depois postar uma a uma, e para isso cada post pendente precisa ser
+    // visivel sem abrir o canal de ofertas.
+    const canalDoPost =
+      interaction.guild && interaction.channel && 'parentId' in interaction.channel
+        ? await this.postChannels.abrir({
+            dealId,
+            titulo: deal.productOffer.product.title,
+            postText: whatsappText,
+            guild: interaction.guild,
+            parentId: interaction.channel.parentId,
+          })
+        : null;
+
+    if (!canalDoPost) {
+      // Sem canal (permissao faltando ou teto atingido) o post nao pode
+      // simplesmente sumir — cai aqui mesmo, como antes.
+      await interaction.editReply(
+        `Nao consegui abrir o canal do post (permissao ou limite). Segue aqui:\n` +
+          `\`\`\`\n${whatsappText}\n\`\`\``,
+      );
+      return;
+    }
+
+    // O card cumpriu o papel: sai do canal para a fila mostrar so o que
+    // ainda falta decidir.
+    await interaction.editReply(`Post pronto em <#${canalDoPost.id}>.`);
+    await interaction.message.delete().catch((error) => {
+      this.logger.warn(
+        `Nao foi possivel apagar o card do deal ${dealId}: ${(error as Error).message}`,
+      );
+    });
 
     this.logger.log(`Deal ${dealId} aprovado. Link: ${finalLink}`);
+  }
+
+  /**
+   * ENCERRAR: apaga o canal do post.
+   *
+   * Nao ha o que responder ao usuario — o canal inteiro desaparece, entao
+   * qualquer editReply morreria junto. Por isso deferUpdate e delete direto.
+   */
+  private async onClosePost(interaction: ButtonInteraction, dealId: string) {
+    const canal = interaction.channel;
+
+    if (!canal || canal.type !== ChannelType.GuildText) {
+      return;
+    }
+
+    try {
+      await interaction.deferUpdate();
+      await this.postChannels.encerrar(canal);
+      this.logger.log(`Canal do post do deal ${dealId} encerrado.`);
+    } catch (error) {
+      this.logger.error(
+        `Falha ao encerrar canal do deal ${dealId}: ${(error as Error).message}`,
+      );
+    }
   }
 
   /**
