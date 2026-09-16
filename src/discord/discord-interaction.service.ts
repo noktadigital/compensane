@@ -155,9 +155,13 @@ export class DiscordInteractionService implements OnApplicationBootstrap {
       return;
     }
 
+    // Descarta a confirmacao: o canal novo ja aparece sozinho na barra
+    // lateral, entao a mensagem nao informa nada — so ocupa a tela ate o
+    // usuario recarregar o cliente. Efemera nao significa automatica.
+    await interaction.deleteReply().catch(() => undefined);
+
     // O card cumpriu o papel: sai do canal para a fila mostrar so o que
     // ainda falta decidir.
-    await interaction.editReply(`Post pronto em <#${canalDoPost.id}>.`);
     await interaction.message.delete().catch((error) => {
       this.logger.warn(
         `Nao foi possivel apagar o card do deal ${dealId}: ${(error as Error).message}`,
