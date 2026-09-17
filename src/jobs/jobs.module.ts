@@ -19,6 +19,8 @@ import { RecordPricesProcessor } from './processors/record-prices.processor';
 import { AggregateDailyProcessor } from './processors/aggregate-daily.processor';
 import { JobsSchedulerService } from './jobs-scheduler.service';
 
+import { JobsAdminController } from './jobs-admin.controller';
+
 @Module({
   imports: [
     BullModule.forRootAsync({
@@ -59,6 +61,7 @@ import { JobsSchedulerService } from './jobs-scheduler.service';
     ShopeeModule,
     DiscordModule,
   ],
+  controllers: [JobsAdminController],
   providers: [
     CollectShopeeProcessor,
     DiscoverShopeeProcessor,

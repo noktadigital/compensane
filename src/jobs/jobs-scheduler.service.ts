@@ -19,10 +19,18 @@ import { QUEUE_DISCOVER_SHOPEE, JOB_DISCOVER_KEYWORD } from './processors/discov
  */
 const TIMEZONE = 'America/Sao_Paulo';
 
-/** Horarios (horario de Brasilia) em que a coleta de precos roda. */
+/**
+ * Horarios (horario de Brasilia) em que a coleta de precos roda E em que
+ * ofertas novas sao descobertas e enviadas ao Discord.
+ *
+ * Descoberta e coleta rodam JUNTAS porque a descoberta e o unico ponto que
+ * manda card para o Discord. Quando ela rodava so uma vez por dia (7h), o
+ * usuario pedia "produtos as 8h, 12h, 16h e 20h" e recebia em um horario
+ * so — nos outros tres a coleta atualizava precos no banco sem enviar nada.
+ */
 const COLLECT_HOURS = [8, 12, 16, 20];
-/** Horario da descoberta de produtos novos e da manutencao diaria. */
-const DISCOVER_HOUR = 7;
+/** Horario da manutencao diaria (expirar deals sem decisao). */
+const MAINTENANCE_HOUR = 7;
 /** Deals sem decisao humana expiram depois disto. */
 const DEAL_EXPIRATION_HOURS = 48;
 
@@ -61,8 +69,9 @@ export class JobsSchedulerService implements OnModuleInit, OnModuleDestroy {
     }, MINUTE_MS);
 
     this.logger.log(
-      `Scheduler ativo (horario de Brasilia): coleta as ${COLLECT_HOURS.map((h) => `${h}h`).join(', ')}; ` +
-        `descoberta e manutencao as ${DISCOVER_HOUR}h. Agora sao ${this.agoraEmBrasilia().hora}h em Brasilia.`,
+      `Scheduler ativo (horario de Brasilia): coleta e descoberta as ` +
+        `${COLLECT_HOURS.map((h) => `${h}h`).join(', ')}; manutencao as ${MAINTENANCE_HOUR}h. ` +
+        `Agora sao ${this.agoraEmBrasilia().hora}h em Brasilia.`,
     );
   }
 
@@ -85,18 +94,20 @@ export class JobsSchedulerService implements OnModuleInit, OnModuleDestroy {
         {},
         { removeOnComplete: 5, removeOnFail: 10, attempts: 2 },
       );
-      this.logger.log(`Coleta das ${hour}h enfileirada.`);
-    }
-
-    if (hour === DISCOVER_HOUR && this.claimSlot('discover', slot)) {
+      // Descoberta junto da coleta: e ela que envia os cards ao Discord.
       await this.discoverQueue.add(
         JOB_DISCOVER_KEYWORD,
         {},
         { removeOnComplete: 5, removeOnFail: 10, attempts: 2 },
       );
+
+      this.logger.log(`Coleta e descoberta das ${hour}h enfileiradas.`);
+    }
+
+    if (hour === MAINTENANCE_HOUR && this.claimSlot('maintenance', slot)) {
       // Manutencao diaria: query unica, nao precisa de fila propria.
       await this.expireStaleDeals();
-      this.logger.log('Descoberta e manutencao diaria executadas.');
+      this.logger.log('Manutencao diaria executada.');
     }
   }
 
