@@ -48,8 +48,34 @@ export class AppConfigService {
       channelUrl: this.config.get<string>('WHATSAPP_CHANNEL_URL', ''),
       imageWidth: this.config.get<string>('SOCIAL_PREVIEW_IMAGE_WIDTH', ''),
       imageHeight: this.config.get<string>('SOCIAL_PREVIEW_IMAGE_HEIGHT', ''),
-      facebookPixelId: this.config.get<string>('FACEBOOK_PIXEL_ID', ''),
+      facebookPixelId: this.facebookPixelId(),
     };
+  }
+
+  /**
+   * Pixel do Facebook usado na pagina de redirect.
+   *
+   * O ID vigente vive aqui, no codigo, e nao so na variavel de ambiente:
+   * o valor antigo ficou configurado no Render de uma forma que nao aparece
+   * na tela de Environment (grupo compartilhado ou secret file), e por isso
+   * nao havia como troca-lo pelo painel. Uma variavel de ambiente com o
+   * valor antigo seria silenciosamente respeitada e a campanha continuaria
+   * medindo no pixel errado.
+   *
+   * FACEBOOK_PIXEL_ID continua valendo para definir OUTRO pixel — so o
+   * antigo e ignorado.
+   */
+  private facebookPixelId(): string {
+    const PIXEL_ATUAL = '1168279285523389';
+    const PIXEL_ANTIGO = '1551971522810441';
+
+    const configurado = this.config.get<string>('FACEBOOK_PIXEL_ID', '').trim();
+
+    if (!configurado || configurado === PIXEL_ANTIGO) {
+      return PIXEL_ATUAL;
+    }
+
+    return configurado;
   }
 
   get databaseUrl(): string {
